@@ -40,6 +40,23 @@ app.get('/api/pedidos/pendientes', (req, res) => {
   res.json(obtenerPedidosPendientesConItems());
 });
 
+// Origen único de verdad para el número de mesas — lo consumen tanto
+// el generador de QR como la pantalla de camarero, para que nunca se
+// desincronicen entre sí.
+app.get('/api/mesas', (req, res) => {
+  const mesas = db.prepare(`SELECT * FROM mesas ORDER BY numero ASC`).all();
+  res.json(mesas);
+});
+
+// Catálogo completo (categorías + productos disponibles), origen único
+// que también usará la carta digital en vez de tener el menú hardcodeado.
+app.get('/api/carta', (req, res) => {
+  const categorias = db.prepare(`SELECT * FROM categorias ORDER BY orden ASC`).all();
+  const productos = db.prepare(`SELECT * FROM productos WHERE disponible = 1`).all()
+    .map(p => ({ ...p, alergenos: JSON.parse(p.alergenos || '[]') }));
+  res.json({ categorias, productos });
+});
+
 app.get('/', (req, res) => {
   res.send('HosteléPro backend funcionando');
 });
@@ -82,7 +99,7 @@ io.on('connection', (socket) => {
         creado_en: new Date().toISOString()
       };
 
-      io.to('cocina').emit('pedido-recibido', pedidoCompleto);
+      io.to('cocina').to('camarero').emit('pedido-recibido', pedidoCompleto);
       socket.emit('pedido-confirmado', { id: pedidoId, mesa });
     } catch (error) {
       console.error('Error al guardar pedido:', error);
@@ -94,7 +111,7 @@ io.on('connection', (socket) => {
   socket.on('pedido-listo', (datos) => {
     const { id, mesa } = datos;
     actualizarEstadoPedido.run('listo', id);
-    io.to('cocina').emit('pedido-actualizado', { id, estado: 'listo' });
+    io.to('cocina').to('camarero').emit('pedido-actualizado', { id, estado: 'listo' });
     io.to('camarero').emit('aviso-mesa', { mesa, mensaje: 'Pedido listo para servir' });
   });
 
@@ -102,7 +119,7 @@ io.on('connection', (socket) => {
   socket.on('pedido-entregado', (datos) => {
     const { id } = datos;
     actualizarEstadoPedido.run('entregado', id);
-    io.to('cocina').emit('pedido-actualizado', { id, estado: 'entregado' });
+    io.to('cocina').to('camarero').emit('pedido-actualizado', { id, estado: 'entregado' });
   });
 
   socket.on('disconnect', () => {

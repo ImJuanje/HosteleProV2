@@ -494,8 +494,9 @@
 <script>
 /* ============================================
    CONFIG — esto es lo que cambia por cliente.
-   En Fase 4 (multi-tenant) esto vendrá de una
-   API/base de datos en vez de estar hardcodeado.
+   Categorías y productos ya NO están aquí — vienen
+   del backend (/api/carta), así el mismo dato que
+   ve el cliente lo usan también camarero y cocina.
    ============================================ */
 const CONFIG = {
   restaurante: {
@@ -503,30 +504,7 @@ const CONFIG = {
     mesa: "MESA 7",
     pedidoActivo: true, // si es false, se oculta el botón "añadir" y la barra inferior
     servidorUrl: "https://hostelepro-production.up.railway.app" // backend en Railway
-  },
-  categorias: [
-    { id: "picar",    nombre: "Para Picar" },
-    { id: "raciones", nombre: "Raciones" },
-    { id: "bebidas",  nombre: "Bebidas" },
-    { id: "postres",  nombre: "Postres" }
-  ],
-  productos: [
-    { id: 1, categoriaId: "picar", nombre: "Patatas bravas", descripcion: "Con alioli casero y salsa brava picante.", precio: 5.50, alergenos: ["huevo"], popular: true },
-    { id: 2, categoriaId: "picar", nombre: "Croquetas de jamón", descripcion: "6 unidades, receta de la abuela.", precio: 6.80, alergenos: ["gluten", "lácteos"], popular: true },
-    { id: 3, categoriaId: "picar", nombre: "Pimientos de Padrón", descripcion: "Fritos con sal gruesa.", precio: 4.90, alergenos: [] },
-    { id: 4, categoriaId: "picar", nombre: "Boquerones en vinagre", descripcion: "", precio: 6.20, alergenos: ["pescado"] },
-
-    { id: 5, categoriaId: "raciones", nombre: "Jamón ibérico", descripcion: "Cortado a cuchillo, bellota 100%.", precio: 14.00, alergenos: [], popular: true },
-    { id: 6, categoriaId: "raciones", nombre: "Calamares a la andaluza", descripcion: "Con limón y mahonesa.", precio: 11.50, alergenos: ["gluten", "moluscos"] },
-    { id: 7, categoriaId: "raciones", nombre: "Tortilla de patatas", descripcion: "Con o sin cebolla, a elegir.", precio: 8.00, alergenos: ["huevo"] },
-
-    { id: 8, categoriaId: "bebidas", nombre: "Caña", descripcion: "", precio: 1.80, alergenos: ["gluten"] },
-    { id: 9, categoriaId: "bebidas", nombre: "Vino de la casa (copa)", descripcion: "Tinto o blanco.", precio: 2.20, alergenos: ["sulfitos"] },
-    { id: 10, categoriaId: "bebidas", nombre: "Refresco", descripcion: "", precio: 2.00, alergenos: [] },
-
-    { id: 11, categoriaId: "postres", nombre: "Flan casero", descripcion: "", precio: 3.50, alergenos: ["huevo", "lácteos"] },
-    { id: 12, categoriaId: "postres", nombre: "Tarta de queso", descripcion: "", precio: 4.20, alergenos: ["lácteos", "gluten"], popular: true }
-  ]
+  }
 };
 
 // La mesa real viene del QR: cada mesa tiene su propia URL con ?mesa=N
@@ -686,40 +664,62 @@ btnEnviarCocina.addEventListener("click", () => {
   });
 });
 
-CONFIG.categorias.forEach((cat, i) => {
-  const btn = document.createElement("button");
-  btn.className = "tab-cat" + (i === 0 ? " activa" : "");
-  btn.textContent = cat.nombre;
-  btn.addEventListener("click", () => {
-    document.getElementById("sec-" + cat.id).scrollIntoView({ behavior: "smooth" });
-    document.querySelectorAll(".tab-cat").forEach(b => b.classList.remove("activa"));
-    btn.classList.add("activa");
+function cargarYRenderizarCarta() {
+  contenido.innerHTML = '<p class="carrito-vacio">Cargando carta...</p>';
+
+  fetch(CONFIG.restaurante.servidorUrl + "/api/carta")
+    .then(res => {
+      if (!res.ok) throw new Error("Respuesta no válida del servidor");
+      return res.json();
+    })
+    .then(datos => renderizarCarta(datos.categorias, datos.productos))
+    .catch(error => {
+      console.error("No se pudo cargar la carta:", error);
+      contenido.innerHTML = '<p class="carrito-vacio">No se pudo cargar la carta. Comprueba tu conexión e inténtalo de nuevo.</p>';
+    });
+}
+
+function renderizarCarta(categorias, productos) {
+  nav.innerHTML = "";
+  contenido.innerHTML = "";
+
+  categorias.forEach((cat, i) => {
+    const btn = document.createElement("button");
+    btn.className = "tab-cat" + (i === 0 ? " activa" : "");
+    btn.textContent = cat.nombre;
+    btn.addEventListener("click", () => {
+      document.getElementById("sec-" + cat.id).scrollIntoView({ behavior: "smooth" });
+      document.querySelectorAll(".tab-cat").forEach(b => b.classList.remove("activa"));
+      btn.classList.add("activa");
+    });
+    nav.appendChild(btn);
   });
-  nav.appendChild(btn);
-});
 
-CONFIG.categorias.forEach((cat, i) => {
-  const seccion = document.createElement("section");
-  seccion.className = "seccion";
-  seccion.id = "sec-" + cat.id;
+  categorias.forEach((cat, i) => {
+    const seccion = document.createElement("section");
+    seccion.className = "seccion";
+    seccion.id = "sec-" + cat.id;
 
-  const titulo = document.createElement("h2");
-  titulo.className = "seccion-titulo";
-  titulo.textContent = cat.nombre;
-  seccion.appendChild(titulo);
+    const titulo = document.createElement("h2");
+    titulo.className = "seccion-titulo";
+    titulo.textContent = cat.nombre;
+    seccion.appendChild(titulo);
 
-  CONFIG.productos
-    .filter(p => p.categoriaId === cat.id)
-    .forEach(p => seccion.appendChild(renderPlato(p)));
+    productos
+      .filter(p => p.categoria_id === cat.id)
+      .forEach(p => seccion.appendChild(renderPlato(p)));
 
-  contenido.appendChild(seccion);
+    contenido.appendChild(seccion);
 
-  if (i < CONFIG.categorias.length - 1) {
-    const sep = document.createElement("div");
-    sep.className = "perforacion";
-    contenido.appendChild(sep);
-  }
-});
+    if (i < categorias.length - 1) {
+      const sep = document.createElement("div");
+      sep.className = "perforacion";
+      contenido.appendChild(sep);
+    }
+  });
+}
+
+cargarYRenderizarCarta();
 
 function renderPlato(p) {
   const div = document.createElement("div");

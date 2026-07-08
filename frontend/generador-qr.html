@@ -112,35 +112,39 @@
 
 <h1>Generador de QR por mesa</h1>
 <p class="ayuda">
-  Pon la URL donde vas a publicar la carta digital (por ejemplo la de Netlify) y el número de mesas del local.
-  Se genera un QR por mesa que enlaza directo a <code>tu-url?mesa=N</code>. Luego dale a "Imprimir" — los QR
-  están pensados para recortar y plastificar uno por mesa.
+  Pon la URL donde publicaste la carta digital y la URL del backend. Las mesas se traen directamente
+  de <code>/api/mesas</code> — si generas o borras mesas desde el backend, aquí se actualizan solas,
+  sin riesgo de que se desincronicen entre esta herramienta y la pantalla de camarero.
 </p>
 
 <div class="panel-config">
   <div class="campo">
     <label for="urlBase">URL de la carta</label>
-    <input type="text" id="urlBase" placeholder="https://tu-restaurante.netlify.app/carta-digital.html" value="https://hosteleprov2.netlify.app/carta/">
+    <input type="text" id="urlBase" placeholder="https://tu-restaurante.netlify.app/carta/" value="https://hosteleprov2.netlify.app/carta/">
   </div>
   <div class="campo">
-    <label for="numMesas">Nº de mesas</label>
-    <input type="number" id="numMesas" value="10" min="1" max="60" style="width: 80px;">
+    <label for="urlBackend">URL del backend</label>
+    <input type="text" id="urlBackend" placeholder="https://tu-backend.up.railway.app" value="https://hostelepro-production.up.railway.app">
   </div>
-  <button id="generar">Generar QR</button>
+  <button id="generar">Cargar mesas y generar QR</button>
   <button id="imprimir" onclick="window.print()" style="background: transparent; border: 1px solid var(--linea); color: var(--tiza); border-radius: 6px; padding: 10px 18px; cursor: pointer;">Imprimir</button>
 </div>
+
+<p id="mensajeEstado" class="ayuda"></p>
 
 <div id="rejillaQr"></div>
 
 <script>
-function generarQr() {
+async function generarQr() {
   let urlBase = document.getElementById("urlBase").value.trim();
-  const numMesas = parseInt(document.getElementById("numMesas").value, 10) || 0;
+  const urlBackend = document.getElementById("urlBackend").value.trim();
   const rejilla = document.getElementById("rejillaQr");
+  const mensajeEstado = document.getElementById("mensajeEstado");
   rejilla.innerHTML = "";
+  mensajeEstado.textContent = "";
 
-  if (!urlBase) {
-    alert("Pon primero la URL de la carta.");
+  if (!urlBase || !urlBackend) {
+    alert("Pon la URL de la carta y la URL del backend.");
     return;
   }
 
@@ -150,9 +154,22 @@ function generarQr() {
     urlBase = "https://" + urlBase;
   }
 
-  for (let mesa = 1; mesa <= numMesas; mesa++) {
+  let mesas;
+  try {
+    mensajeEstado.textContent = "Cargando mesas desde el backend...";
+    const respuesta = await fetch(urlBackend.replace(/\/$/, "") + "/api/mesas");
+    if (!respuesta.ok) throw new Error("Respuesta no válida");
+    mesas = await respuesta.json();
+    mensajeEstado.textContent = `${mesas.length} mesas cargadas desde el backend.`;
+  } catch (error) {
+    mensajeEstado.textContent = "";
+    alert("No se pudo conectar con el backend en " + urlBackend + ". Comprueba la URL y que esté desplegado.");
+    return;
+  }
+
+  mesas.forEach(mesa => {
     const separador = urlBase.includes("?") ? "&" : "?";
-    const urlMesa = `${urlBase}${separador}mesa=${mesa}`;
+    const urlMesa = `${urlBase}${separador}mesa=${mesa.numero}`;
 
     const tarjeta = document.createElement("div");
     tarjeta.className = "tarjeta-qr";
@@ -162,7 +179,7 @@ function generarQr() {
 
     const numLabel = document.createElement("div");
     numLabel.className = "mesa-num";
-    numLabel.textContent = "MESA " + mesa;
+    numLabel.textContent = "MESA " + mesa.numero;
     tarjeta.appendChild(numLabel);
 
     const urlLabel = document.createElement("div");
@@ -179,7 +196,7 @@ function generarQr() {
       colorDark: "#1c2321",
       colorLight: "#ffffff"
     });
-  }
+  });
 }
 
 document.getElementById("generar").addEventListener("click", generarQr);

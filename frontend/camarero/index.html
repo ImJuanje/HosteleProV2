@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camarero · HosteléPro</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+  :root {
+    --pizarra: #1c2321;
+    --pizarra-alta: #262f2c;
+    --tiza: #f2ede3;
+    --tiza-tenue: #b7c2bc;
+    --mostaza: #e0a638;
+    --oliva: #7c9070;
+    --linea: #3a4441;
+    --radio: 10px;
+    --f-display: 'Caveat', cursive;
+    --f-cuerpo: 'Inter', system-ui, sans-serif;
+    --f-ticket: 'Space Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--pizarra);
+    color: var(--tiza);
+    font-family: var(--f-cuerpo);
+    padding: 20px;
+    padding-bottom: 60px;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: 32px;
+    margin: 0;
+  }
+
+  .config-servidor {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .config-servidor input {
+    background: var(--pizarra-alta);
+    border: 1px solid var(--linea);
+    color: var(--tiza);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+    width: 220px;
+  }
+  .config-servidor button {
+    background: var(--linea);
+    color: var(--tiza);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+  }
+  .estado-conexion {
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: #6b2b2b;
+  }
+  .estado-conexion.conectado { background: var(--oliva); color: var(--pizarra); }
+
+  /* ---------- Leyenda ---------- */
+  .leyenda {
+    display: flex;
+    gap: 16px;
+    font-family: var(--f-ticket);
+    font-size: 11px;
+    color: var(--tiza-tenue);
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .leyenda span { display: flex; align-items: center; gap: 6px; }
+  .punto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .punto.libre { background: var(--linea); border: 1px solid var(--tiza-tenue); }
+  .punto.enviado { background: var(--mostaza); }
+  .punto.listo { background: var(--oliva); }
+
+  /* ---------- Tablero de mesas ---------- */
+  .tablero {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+  }
+
+  .mesa-card {
+    background: var(--pizarra-alta);
+    border: 2px solid var(--linea);
+    border-radius: var(--radio);
+    padding: 18px 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .mesa-card:hover { border-color: var(--tiza-tenue); }
+  .mesa-card.enviado { border-color: var(--mostaza); }
+  .mesa-card.listo { border-color: var(--oliva); animation: pulso 1.4s ease-in-out infinite; }
+
+  @keyframes pulso {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(124, 144, 112, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(124, 144, 112, 0); }
+  }
+
+  .mesa-card .numero {
+    font-family: var(--f-display);
+    font-size: 30px;
+    display: block;
+  }
+  .mesa-card .estado-texto {
+    font-family: var(--f-ticket);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--tiza-tenue);
+    margin-top: 4px;
+    display: block;
+  }
+  .mesa-card.enviado .estado-texto { color: var(--mostaza); }
+  .mesa-card.listo .estado-texto { color: var(--oliva); }
+
+  .sin-mesas {
+    color: var(--tiza-tenue);
+    font-family: var(--f-ticket);
+    font-size: 13px;
+  }
+
+  /* ---------- Modal de detalle de mesa ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 40;
+  }
+  .overlay.visible { display: flex; }
+
+  .panel-modal {
+    background: var(--pizarra-alta);
+    width: 100%;
+    max-width: 640px;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 20px 30px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-top: 3px dashed var(--linea);
+  }
+
+  .panel-cabecera {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .panel-cabecera h2 {
+    font-family: var(--f-display);
+    font-size: 30px;
+    margin: 0;
+  }
+  .cerrar-modal {
+    background: none;
+    border: none;
+    color: var(--tiza-tenue);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .subtitulo-seccion {
+    font-family: var(--f-ticket);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--tiza-tenue);
+    margin: 18px 0 10px;
+  }
+
+  .ticket-activo {
+    background: var(--pizarra);
+    border-left: 4px solid var(--mostaza);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .ticket-activo.listo { border-left-color: var(--oliva); }
+  .ticket-activo .linea-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+  }
+  .ticket-activo .linea-item .cant { color: var(--mostaza); font-family: var(--f-ticket); margin-right: 6px; }
+  .ticket-activo .fila-accion {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--linea);
+  }
+  .btn-entregado {
+    background: var(--oliva);
+    color: var(--pizarra);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-family: var(--f-ticket);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .badge-estado {
+    font-family: var(--f-ticket);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--tiza-tenue);
+  }
+
+  .sin-pedido-activo {
+    color: var(--tiza-tenue);
+    font-size: 13px;
+    font-family: var(--f-ticket);
+  }
+
+  /* ---------- Constructor de nueva comanda ---------- */
+  .tabs-mini {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 12px;
+  }
+  .tab-mini {
+    flex: 0 0 auto;
+    font-family: var(--f-ticket);
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--tiza-tenue);
+    background: transparent;
+    border: 1px solid var(--linea);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .tab-mini.activa { background: var(--tiza); color: var(--pizarra); border-color: var(--tiza); }
+
+  .producto-fila {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--linea);
+    font-size: 13px;
+  }
+  .producto-fila .nombre { flex: 1; }
+  .producto-fila .precio { font-family: var(--f-ticket); color: var(--mostaza); margin-right: 10px; }
+  .btn-add-mini {
+    background: var(--oliva);
+    color: var(--pizarra);
+    border: none;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  .carrito-nueva-comanda {
+    background: var(--pizarra);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-top: 14px;
+  }
+  .carrito-nueva-comanda .fila-carrito {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-family: var(--f-ticket);
+    padding: 4px 0;
+  }
+  .carrito-nueva-comanda .fila-carrito button {
+    background: none;
+    border: none;
+    color: var(--tiza-tenue);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .total-nueva-comanda {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--f-ticket);
+    font-size: 15px;
+    color: var(--mostaza);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--linea);
+  }
+
+  .btn-enviar-comanda {
+    width: 100%;
+    margin-top: 14px;
+    background: var(--mostaza);
+    color: var(--pizarra);
+    border: none;
+    border-radius: var(--radio);
+    padding: 14px;
+    font-family: var(--f-ticket);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+  }
+  .btn-enviar-comanda:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧑‍🍳 Camarero</h1>
+  <div class="config-servidor">
+    <input type="text" id="urlServidor" value="https://hostelepro-production.up.railway.app" placeholder="URL del backend">
+    <button id="btnConectar">Conectar</button>
+    <span class="estado-conexion" id="estadoConexion">desconectado</span>
+  </div>
+</header>
+
+<div class="leyenda">
+  <span><span class="punto libre"></span> Libre</span>
+  <span><span class="punto enviado"></span> Pedido en cocina</span>
+  <span><span class="punto listo"></span> Listo para servir</span>
+</div>
+
+<div class="tablero" id="tablero">
+  <p class="sin-mesas">Conectando con el backend...</p>
+</div>
+
+<div class="overlay" id="overlayMesa">
+  <div class="panel-modal">
+    <div class="panel-cabecera">
+      <h2 id="tituloMesaModal">MESA</h2>
+      <button class="cerrar-modal" id="cerrarModalMesa">✕</button>
+    </div>
+
+    <div class="subtitulo-seccion">Pedidos activos</div>
+    <div id="pedidosActivosMesa"></div>
+
+    <div class="subtitulo-seccion">Nueva comanda</div>
+    <div class="tabs-mini" id="tabsMiniCategorias"></div>
+    <div id="listaProductosMini"></div>
+
+    <div class="carrito-nueva-comanda">
+      <div id="filasCarritoNuevo"></div>
+      <div class="total-nueva-comanda">
+        <span>Total</span>
+        <span id="totalNuevaComanda">0,00 €</span>
+      </div>
+    </div>
+    <button class="btn-enviar-comanda" id="btnEnviarNuevaComanda" disabled>Enviar a cocina</button>
+  </div>
+</div>
+
+<script>
+let socket = null;
+let mesas = [];
+let carta = { categorias: [], productos: [] };
+let pedidosPorMesa = {}; // numero de mesa -> array de pedidos activos
+let mesaAbiertaActual = null;
+let carritoNuevaComanda = []; // { id, nombre, precio, cantidad }
+
+const tablero = document.getElementById("tablero");
+const estadoConexion = document.getElementById("estadoConexion");
+const overlayMesa = document.getElementById("overlayMesa");
+
+function formatoPrecio(n) {
+  return Number(n).toFixed(2).replace(".", ",") + " €";
+}
+
+function extraerNumeroMesa(mesaTexto) {
+  const match = String(mesaTexto).match(/\d+/);
+  return match ? parseInt(match[0], 10) : null;
+}
+
+function estadoDeMesa(numero) {
+  const pedidos = pedidosPorMesa[numero] || [];
+  if (pedidos.some(p => p.estado === "listo")) return "listo";
+  if (pedidos.some(p => p.estado === "enviado")) return "enviado";
+  return "libre";
+}
+
+function textoEstado(estado) {
+  if (estado === "enviado") return "En cocina";
+  if (estado === "listo") return "Listo";
+  return "Libre";
+}
+
+// ---------- Tablero ----------
+function renderTablero() {
+  if (mesas.length === 0) {
+    tablero.innerHTML = '<p class="sin-mesas">No hay mesas configuradas en el backend todavía (ejecuta seed.js).</p>';
+    return;
+  }
+
+  tablero.innerHTML = "";
+  mesas.forEach(mesa => {
+    const estado = estadoDeMesa(mesa.numero);
+    const card = document.createElement("div");
+    card.className = "mesa-card " + estado;
+    card.innerHTML = `
+      <span class="numero">${mesa.numero}</span>
+      <span class="estado-texto">${textoEstado(estado)}</span>
+    `;
+    card.addEventListener("click", () => abrirMesa(mesa.numero));
+    tablero.appendChild(card);
+  });
+}
+
+// ---------- Detalle de mesa ----------
+function abrirMesa(numero) {
+  mesaAbiertaActual = numero;
+  carritoNuevaComanda = [];
+  document.getElementById("tituloMesaModal").textContent = "MESA " + numero;
+  renderPedidosActivos();
+  renderTabsCategorias();
+  renderCarritoNuevaComanda();
+  overlayMesa.classList.add("visible");
+}
+
+function renderPedidosActivos() {
+  const contenedor = document.getElementById("pedidosActivosMesa");
+  const pedidos = pedidosPorMesa[mesaAbiertaActual] || [];
+
+  if (pedidos.length === 0) {
+    contenedor.innerHTML = '<p class="sin-pedido-activo">Esta mesa no tiene pedidos activos.</p>';
+    return;
+  }
+
+  contenedor.innerHTML = "";
+  pedidos.forEach(pedido => {
+    const div = document.createElement("div");
+    div.className = "ticket-activo" + (pedido.estado === "listo" ? " listo" : "");
+
+    const lineas = pedido.items.map(item => `
+      <div class="linea-item">
+        <span><span class="cant">${item.cantidad}x</span>${item.nombre}</span>
+      </div>
+    `).join("");
+
+    div.innerHTML = `
+      ${lineas}
+      <div class="fila-accion">
+        <span class="badge-estado">${textoEstado(pedido.estado)} · ${formatoPrecio(pedido.total)}</span>
+      </div>
+    `;
+
+    if (pedido.estado === "listo") {
+      const boton = document.createElement("button");
+      boton.className = "btn-entregado";
+      boton.textContent = "Marcar entregado";
+      boton.addEventListener("click", () => {
+        socket.emit("pedido-entregado", { id: pedido.id });
+      });
+      div.querySelector(".fila-accion").appendChild(boton);
+    }
+
+    contenedor.appendChild(div);
+  });
+}
+
+// ---------- Constructor de nueva comanda ----------
+function renderTabsCategorias() {
+  const tabs = document.getElementById("tabsMiniCategorias");
+  tabs.innerHTML = "";
+  carta.categorias.forEach((cat, i) => {
+    const btn = document.createElement("button");
+    btn.className = "tab-mini" + (i === 0 ? " activa" : "");
+    btn.textContent = cat.nombre;
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-mini").forEach(b => b.classList.remove("activa"));
+      btn.classList.add("activa");
+      renderListaProductosMini(cat.id);
+    });
+    tabs.appendChild(btn);
+  });
+  if (carta.categorias.length > 0) {
+    renderListaProductosMini(carta.categorias[0].id);
+  }
+}
+
+function renderListaProductosMini(categoriaId) {
+  const lista = document.getElementById("listaProductosMini");
+  lista.innerHTML = "";
+  carta.productos
+    .filter(p => p.categoria_id === categoriaId)
+    .forEach(p => {
+      const fila = document.createElement("div");
+      fila.className = "producto-fila";
+      fila.innerHTML = `
+        <span class="nombre">${p.nombre}</span>
+        <span class="precio">${formatoPrecio(p.precio)}</span>
+      `;
+      const boton = document.createElement("button");
+      boton.className = "btn-add-mini";
+      boton.textContent = "+";
+      boton.addEventListener("click", () => añadirANuevaComanda(p));
+      fila.appendChild(boton);
+      lista.appendChild(fila);
+    });
+}
+
+function añadirANuevaComanda(producto) {
+  const existente = carritoNuevaComanda.find(item => item.id === producto.id);
+  if (existente) {
+    existente.cantidad += 1;
+  } else {
+    carritoNuevaComanda.push({ id: producto.id, nombre: producto.nombre, precio: producto.precio, cantidad: 1 });
+  }
+  renderCarritoNuevaComanda();
+}
+
+function quitarDeNuevaComanda(id) {
+  carritoNuevaComanda = carritoNuevaComanda.filter(item => item.id !== id);
+  renderCarritoNuevaComanda();
+}
+
+function totalNuevaComanda() {
+  return carritoNuevaComanda.reduce((suma, item) => suma + item.precio * item.cantidad, 0);
+}
+
+function renderCarritoNuevaComanda() {
+  const filas = document.getElementById("filasCarritoNuevo");
+  filas.innerHTML = "";
+
+  if (carritoNuevaComanda.length === 0) {
+    filas.innerHTML = '<p class="sin-pedido-activo">Toca "+" en un producto para añadirlo.</p>';
+  } else {
+    carritoNuevaComanda.forEach(item => {
+      const fila = document.createElement("div");
+      fila.className = "fila-carrito";
+      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>`;
+      const quitar = document.createElement("button");
+      quitar.textContent = "quitar";
+      quitar.addEventListener("click", () => quitarDeNuevaComanda(item.id));
+      fila.appendChild(quitar);
+      filas.appendChild(fila);
+    });
+  }
+
+  document.getElementById("totalNuevaComanda").textContent = formatoPrecio(totalNuevaComanda());
+  document.getElementById("btnEnviarNuevaComanda").disabled = carritoNuevaComanda.length === 0;
+}
+
+document.getElementById("btnEnviarNuevaComanda").addEventListener("click", () => {
+  if (carritoNuevaComanda.length === 0 || mesaAbiertaActual === null) return;
+
+  const items = carritoNuevaComanda.map(item => ({
+    nombre: item.nombre,
+    precio: item.precio,
+    cantidad: item.cantidad,
+    notas: ""
+  }));
+
+  socket.emit("nuevo-pedido", {
+    mesa: "MESA " + mesaAbiertaActual,
+    items,
+    total: totalNuevaComanda()
+  });
+
+  carritoNuevaComanda = [];
+  renderCarritoNuevaComanda();
+});
+
+document.getElementById("cerrarModalMesa").addEventListener("click", () => {
+  overlayMesa.classList.remove("visible");
+  mesaAbiertaActual = null;
+});
+overlayMesa.addEventListener("click", (e) => {
+  if (e.target === overlayMesa) {
+    overlayMesa.classList.remove("visible");
+    mesaAbiertaActual = null;
+  }
+});
+
+// ---------- Carga de datos y conexión ----------
+async function cargarMesas(urlBase) {
+  const respuesta = await fetch(urlBase + "/api/mesas");
+  mesas = await respuesta.json();
+}
+
+async function cargarCarta(urlBase) {
+  const respuesta = await fetch(urlBase + "/api/carta");
+  carta = await respuesta.json();
+}
+
+async function cargarPedidosPendientes(urlBase) {
+  const respuesta = await fetch(urlBase + "/api/pedidos/pendientes");
+  const pedidos = await respuesta.json();
+  pedidosPorMesa = {};
+  pedidos.forEach(p => {
+    const numero = extraerNumeroMesa(p.mesa);
+    if (numero === null) return;
+    if (!pedidosPorMesa[numero]) pedidosPorMesa[numero] = [];
+    pedidosPorMesa[numero].push(p);
+  });
+}
+
+function actualizarPedidoPorId(id, cambios) {
+  Object.values(pedidosPorMesa).forEach(lista => {
+    const pedido = lista.find(p => p.id === id);
+    if (pedido) Object.assign(pedido, cambios);
+  });
+}
+
+function quitarPedidoDeMesa(id) {
+  Object.keys(pedidosPorMesa).forEach(numero => {
+    pedidosPorMesa[numero] = pedidosPorMesa[numero].filter(p => p.id !== id);
+  });
+}
+
+async function conectar() {
+  const urlBase = document.getElementById("urlServidor").value.trim().replace(/\/$/, "");
+  if (!urlBase) return;
+
+  tablero.innerHTML = '<p class="sin-mesas">Cargando mesas y carta...</p>';
+
+  try {
+    await Promise.all([cargarMesas(urlBase), cargarCarta(urlBase), cargarPedidosPendientes(urlBase)]);
+    renderTablero();
+  } catch (error) {
+    console.error(error);
+    tablero.innerHTML = '<p class="sin-mesas">No se pudo cargar del backend. Comprueba la URL.</p>';
+    return;
+  }
+
+  if (socket) socket.disconnect();
+  socket = io(urlBase);
+
+  socket.on("connect", () => {
+    estadoConexion.textContent = "conectado";
+    estadoConexion.classList.add("conectado");
+    socket.emit("unirse-camarero");
+  });
+
+  socket.on("disconnect", () => {
+    estadoConexion.textContent = "desconectado";
+    estadoConexion.classList.remove("conectado");
+  });
+
+  socket.on("pedido-recibido", (pedido) => {
+    const numero = extraerNumeroMesa(pedido.mesa);
+    if (numero === null) return;
+    if (!pedidosPorMesa[numero]) pedidosPorMesa[numero] = [];
+    pedidosPorMesa[numero].push(pedido);
+    renderTablero();
+    if (mesaAbiertaActual === numero) renderPedidosActivos();
+  });
+
+  socket.on("pedido-actualizado", (datos) => {
+    if (datos.estado === "entregado") {
+      quitarPedidoDeMesa(datos.id);
+    } else {
+      actualizarPedidoPorId(datos.id, { estado: datos.estado });
+    }
+    renderTablero();
+    if (mesaAbiertaActual !== null) renderPedidosActivos();
+  });
+}
+
+document.getElementById("btnConectar").addEventListener("click", conectar);
+window.addEventListener("load", conectar);
+</script>
+</body>
+</html>

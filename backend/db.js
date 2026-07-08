@@ -3,11 +3,30 @@ const path = require('path');
 
 const db = new Database(path.join(__dirname, 'database.sqlite'));
 
-// Esquema mínimo para Fase 2. El catálogo de productos sigue viviendo
-// en el frontend (CONFIG de carta-digital.html) hasta que montemos el
-// panel de administración — por eso pedido_items guarda nombre/precio
-// directamente en vez de referenciar una tabla productos.
 db.exec(`
+  CREATE TABLE IF NOT EXISTS mesas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero INTEGER NOT NULL UNIQUE
+  );
+
+  CREATE TABLE IF NOT EXISTS categorias (
+    id TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    orden INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS productos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    categoria_id TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    descripcion TEXT DEFAULT '',
+    precio REAL NOT NULL,
+    alergenos TEXT DEFAULT '[]', -- JSON serializado, ej: ["gluten","huevo"]
+    popular INTEGER DEFAULT 0,
+    disponible INTEGER DEFAULT 1,
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+  );
+
   CREATE TABLE IF NOT EXISTS pedidos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     mesa TEXT NOT NULL,
