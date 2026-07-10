@@ -390,6 +390,18 @@
     text-align: center;
   }
 
+  .nota-item{
+  width:100%;
+  margin-top:8px;
+  padding:8px;
+  border:1px solid #ddd;
+  border-radius:8px;
+  resize:vertical;
+  min-height:60px;
+  font-size:14px;
+}
+
+
   /* ---------- Cartel de confirmación ---------- */
   .overlay-confirmacion {
     position: fixed;
@@ -548,7 +560,7 @@ function añadirAlCarrito(producto) {
   if (existente) {
     existente.cantidad += 1;
   } else {
-    carrito.push({ id: producto.id, nombre: producto.nombre, precio: producto.precio, cantidad: 1 });
+    carrito.push({ id: producto.id, nombre: producto.nombre, precio: producto.precio, cantidad: 1, notas:"" });
   }
   actualizarBarra();
 }
@@ -588,7 +600,19 @@ function renderResumenPedido() {
         <span class="nombre-item">${item.nombre}</span>
         <span class="cantidad-item">x${item.cantidad}</span>
         <span>${formatoPrecio(item.precio * item.cantidad)}</span>
+
+        <textarea
+          class="nota-item"
+          placeholder="Ej: sin cebolla, poco hecha, sin gluten..."
+        >${item.notas || ""}</textarea>
       `;
+        const textarea = fila.querySelector(".nota-item");
+
+          textarea.addEventListener("input", (e) => {
+            item.notas = e.target.value;
+          });
+
+
       const quitar = document.createElement("button");
       quitar.className = "quitar-item";
       quitar.textContent = "✕";
@@ -623,7 +647,7 @@ btnEnviarCocina.addEventListener("click", () => {
     nombre: item.nombre,
     precio: item.precio,
     cantidad: item.cantidad,
-    notas: ""
+    notas: item.notas||""
   }));
   const total = totalCarrito();
 
