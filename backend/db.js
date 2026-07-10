@@ -29,10 +29,12 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS pedidos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mesa TEXT NOT NULL,
+    mesa TEXT, -- NULL cuando tipo = 'llevar'
     estado TEXT NOT NULL DEFAULT 'enviado', -- enviado | en_preparacion | listo | entregado
     creado_en TEXT NOT NULL,
-    total REAL NOT NULL
+    total REAL NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'mesa', -- mesa | llevar
+    telefono TEXT DEFAULT '' -- solo relevante cuando tipo = 'llevar'
   );
 
   CREATE TABLE IF NOT EXISTS pedido_items (
@@ -42,8 +44,29 @@ db.exec(`
     precio_unitario REAL NOT NULL,
     cantidad INTEGER NOT NULL,
     notas TEXT DEFAULT '',
+    preparado INTEGER DEFAULT 0, -- marcado individualmente por cocina antes de cerrar el pedido completo
     FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
   );
 `);
+
+// Migración para bases de datos que ya existían antes de estas columnas
+// (por ejemplo la que ya tienes desplegada en Railway). CREATE TABLE IF NOT
+// EXISTS no añade columnas nuevas a una tabla que ya existe, así que hace
+// falta este paso aparte. Es seguro ejecutarlo siempre: si la columna ya
+// existe, simplemente lo ignora.
+function columnaExiste(tabla, columna) {
+  const columnas = db.prepare(`PRAGMA table_info(${tabla})`).all();
+  return columnas.some(c => c.name === columna);
+}
+
+if (!columnaExiste('pedido_items', 'preparado')) {
+  db.exec(`ALTER TABLE pedido_items ADD COLUMN preparado INTEGER DEFAULT 0`);
+}
+if (!columnaExiste('pedidos', 'tipo')) {
+  db.exec(`ALTER TABLE pedidos ADD COLUMN tipo TEXT DEFAULT 'mesa'`);
+}
+if (!columnaExiste('pedidos', 'telefono')) {
+  db.exec(`ALTER TABLE pedidos ADD COLUMN telefono TEXT DEFAULT ''`);
+}
 
 module.exports = db;

@@ -159,6 +159,82 @@
     color: var(--tiza-tenue);
     cursor: default;
   }
+
+  .btn-historico {
+    background: var(--linea);
+    color: var(--tiza);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+  }
+
+  .ticket-linea {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .ticket-linea input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--oliva);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ticket-linea.preparada span { text-decoration: line-through; color: var(--tiza-tenue); }
+
+  .ticket-llevar { border-left-color: var(--mostaza); }
+  .etiqueta-llevar {
+    font-family: var(--f-ticket);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--mostaza);
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* ---------- Histórico ---------- */
+  .overlay-historico {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 20px;
+  }
+  .overlay-historico.visible { display: flex; }
+
+  .panel-historico {
+    background: var(--pizarra-alta);
+    border-radius: var(--radio);
+    padding: 20px;
+    max-width: 700px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .panel-historico h2 {
+    font-family: var(--f-display);
+    font-size: 28px;
+    margin: 0 0 14px;
+  }
+  .fila-historico {
+    border-bottom: 1px solid var(--linea);
+    padding: 10px 0;
+    font-size: 13px;
+  }
+  .fila-historico .cabecera-historico {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--f-ticket);
+    color: var(--tiza-tenue);
+    margin-bottom: 4px;
+  }
 </style>
 </head>
 <body>
@@ -168,6 +244,7 @@
   <div class="config-servidor">
     <input type="text" id="urlServidor" value="https://hosteleprov2-production.up.railway.app" placeholder="URL del backend">
     <button id="btnConectar">Conectar</button>
+    <button class="btn-historico" id="btnHistorico">🕘 Histórico</button>
     <span class="estado-conexion" id="estadoConexion">desconectado</span>
   </div>
 </header>
@@ -176,10 +253,19 @@
   <p class="sin-pedidos">Esperando pedidos...</p>
 </div>
 
+<div class="overlay-historico" id="overlayHistorico">
+  <div class="panel-historico">
+    <h2>Histórico</h2>
+    <div id="listaHistorico"></div>
+  </div>
+</div>
+
 <script>
 let socket = null;
+let urlBackendActual = "";
 const tablero = document.getElementById("tablero");
 const estadoConexion = document.getElementById("estadoConexion");
+const overlayHistorico = document.getElementById("overlayHistorico");
 
 function formatoPrecio(n) {
   return Number(n).toFixed(2).replace(".", ",") + " €";
@@ -201,29 +287,61 @@ function renderTicket(pedido) {
   if (mensajeVacio) mensajeVacio.remove();
 
   const div = document.createElement("div");
-  div.className = "ticket";
+  div.className = "ticket" + (pedido.tipo === "llevar" ? " ticket-llevar" : "");
   div.id = "pedido-" + pedido.id;
 
+  const etiquetaCabecera = pedido.tipo === "llevar"
+    ? `<span class="ticket-mesa">📦 ${pedido.telefono}</span><span class="etiqueta-llevar">para llevar</span>`
+    : `<span class="ticket-mesa">${pedido.mesa}</span>`;
+
   const lineas = pedido.items.map(item => `
-    <div class="ticket-linea">
+    <label class="ticket-linea${item.preparado ? " preparada" : ""}" data-item-id="${item.id}">
+      <input type="checkbox" ${item.preparado ? "checked" : ""}>
       <span><span class="cant">${item.cantidad}x</span>${item.nombre}${item.notas ? " — " + item.notas : ""}</span>
-    </div>
+    </label>
   `).join("");
 
   div.innerHTML = `
     <div class="ticket-cabecera">
-      <span class="ticket-mesa">${pedido.mesa}</span>
+      ${etiquetaCabecera}
       <span class="ticket-hora">${formatoHora(pedido.creado_en)}</span>
     </div>
     ${lineas}
     <button class="btn-listo">Marcar listo</button>
   `;
 
+  div.querySelectorAll(".ticket-linea").forEach(fila => {
+    const checkbox = fila.querySelector("input[type=checkbox]");
+    checkbox.addEventListener("change", () => {
+      socket.emit("item-preparado", { itemId: Number(fila.dataset.itemId), preparado: checkbox.checked });
+    });
+  });
+
+  actualizarEstadoBotonListo(div);
+
   div.querySelector(".btn-listo").addEventListener("click", () => {
     socket.emit("pedido-listo", { id: pedido.id, mesa: pedido.mesa });
   });
 
   tablero.prepend(div);
+}
+
+// El botón "Marcar listo" solo se activa cuando todas las líneas del
+// ticket están marcadas — evita que se cierre un pedido a medio hacer.
+function actualizarEstadoBotonListo(ticketEl) {
+  const filas = ticketEl.querySelectorAll(".ticket-linea");
+  const todasPreparadas = Array.from(filas).every(f => f.querySelector("input[type=checkbox]").checked);
+  const boton = ticketEl.querySelector(".btn-listo");
+  if (boton) boton.disabled = !todasPreparadas;
+}
+
+function marcarItemPreparado(itemId, preparado) {
+  const fila = document.querySelector(`.ticket-linea[data-item-id="${itemId}"]`);
+  if (!fila) return;
+  fila.classList.toggle("preparada", preparado);
+  fila.querySelector("input[type=checkbox]").checked = preparado;
+  const ticket = fila.closest(".ticket");
+  if (ticket) actualizarEstadoBotonListo(ticket);
 }
 
 function marcarComoListo(id) {
@@ -258,6 +376,7 @@ async function cargarPedidosPendientes(urlBase) {
 function conectar() {
   const urlBase = document.getElementById("urlServidor").value.trim();
   if (!urlBase) return;
+  urlBackendActual = urlBase;
 
   if (socket) socket.disconnect();
 
@@ -291,7 +410,54 @@ function conectar() {
   socket.on("pedido-actualizado", (datos) => {
     if (datos.estado === "listo") marcarComoListo(datos.id);
   });
+
+  // Si hay más de una pantalla de cocina abierta, esto mantiene los
+  // checkboxes sincronizados entre todas ellas.
+  socket.on("item-actualizado", (datos) => {
+    marcarItemPreparado(datos.itemId, datos.preparado);
+  });
 }
+
+async function abrirHistorico() {
+  const lista = document.getElementById("listaHistorico");
+  lista.innerHTML = '<p class="sin-pedidos">Cargando...</p>';
+  overlayHistorico.classList.add("visible");
+
+  if (!urlBackendActual) return;
+
+  try {
+    const respuesta = await fetch(urlBackendActual + "/api/pedidos/historico");
+    const historico = await respuesta.json();
+
+    if (historico.length === 0) {
+      lista.innerHTML = '<p class="sin-pedidos">Todavía no hay pedidos entregados.</p>';
+      return;
+    }
+
+    lista.innerHTML = "";
+    historico.forEach(pedido => {
+      const etiqueta = pedido.tipo === "llevar" ? "📦 " + pedido.telefono : pedido.mesa;
+      const items = pedido.items.map(i => `${i.cantidad}x ${i.nombre}`).join(", ");
+      const fila = document.createElement("div");
+      fila.className = "fila-historico";
+      fila.innerHTML = `
+        <div class="cabecera-historico">
+          <span>${etiqueta}</span>
+          <span>${formatoHora(pedido.creado_en)} · ${formatoPrecio(pedido.total)}</span>
+        </div>
+        <div>${items}</div>
+      `;
+      lista.appendChild(fila);
+    });
+  } catch (error) {
+    lista.innerHTML = '<p class="sin-pedidos">No se pudo cargar el histórico.</p>';
+  }
+}
+
+document.getElementById("btnHistorico").addEventListener("click", abrirHistorico);
+overlayHistorico.addEventListener("click", (e) => {
+  if (e.target === overlayHistorico) overlayHistorico.classList.remove("visible");
+});
 
 document.getElementById("btnConectar").addEventListener("click", conectar);
 window.addEventListener("load", conectar);

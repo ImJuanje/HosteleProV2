@@ -331,6 +331,56 @@
     opacity: 0.4;
     cursor: default;
   }
+
+  /* ---------- Para llevar ---------- */
+  .btn-nuevo-llevar {
+    background: var(--mostaza);
+    color: var(--pizarra);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .input-telefono {
+    width: 100%;
+    background: var(--pizarra);
+    border: 1px solid var(--linea);
+    color: var(--tiza);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: var(--f-ticket);
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+
+  .llevar-card {
+    background: var(--pizarra-alta);
+    border: 2px solid var(--linea);
+    border-radius: var(--radio);
+    padding: 14px;
+    cursor: pointer;
+  }
+  .llevar-card.enviado { border-color: var(--mostaza); }
+  .llevar-card.listo { border-color: var(--oliva); animation: pulso 1.4s ease-in-out infinite; }
+  .llevar-card .telefono {
+    font-family: var(--f-ticket);
+    font-size: 15px;
+    display: block;
+  }
+  .llevar-card .estado-texto {
+    font-family: var(--f-ticket);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--tiza-tenue);
+    margin-top: 4px;
+    display: block;
+  }
+  .llevar-card.enviado .estado-texto { color: var(--mostaza); }
+  .llevar-card.listo .estado-texto { color: var(--oliva); }
 </style>
 </head>
 <body>
@@ -340,6 +390,7 @@
   <div class="config-servidor">
     <input type="text" id="urlServidor" value="https://hosteleprov2-production.up.railway.app" placeholder="URL del backend">
     <button id="btnConectar">Conectar</button>
+    <button class="btn-nuevo-llevar" id="btnNuevoLlevar">+ Para llevar</button>
     <span class="estado-conexion" id="estadoConexion">desconectado</span>
   </div>
 </header>
@@ -352,6 +403,11 @@
 
 <div class="tablero" id="tablero">
   <p class="sin-mesas">Conectando con el backend...</p>
+</div>
+
+<div class="subtitulo-seccion" style="margin-top: 26px; font-size: 13px;">📦 Para llevar</div>
+<div class="tablero" id="tableroLlevar">
+  <p class="sin-mesas">Sin pedidos para llevar.</p>
 </div>
 
 <div class="overlay" id="overlayMesa">
@@ -379,17 +435,60 @@
   </div>
 </div>
 
+<!-- Crear pedido nuevo para llevar -->
+<div class="overlay" id="overlayNuevoLlevar">
+  <div class="panel-modal">
+    <div class="panel-cabecera">
+      <h2>📦 Para llevar</h2>
+      <button class="cerrar-modal" id="cerrarNuevoLlevar">✕</button>
+    </div>
+
+    <div class="subtitulo-seccion">Teléfono de contacto</div>
+    <input type="tel" id="telefonoLlevar" class="input-telefono" placeholder="600 123 456">
+
+    <div class="subtitulo-seccion">Productos</div>
+    <div class="tabs-mini" id="tabsMiniLlevar"></div>
+    <div id="listaProductosLlevar"></div>
+
+    <div class="carrito-nueva-comanda">
+      <div id="filasCarritoLlevar"></div>
+      <div class="total-nueva-comanda">
+        <span>Total</span>
+        <span id="totalLlevar">0,00 €</span>
+      </div>
+    </div>
+    <button class="btn-enviar-comanda" id="btnEnviarLlevar" disabled>Enviar a cocina</button>
+  </div>
+</div>
+
+<!-- Detalle de un pedido para llevar ya existente -->
+<div class="overlay" id="overlayDetalleLlevar">
+  <div class="panel-modal">
+    <div class="panel-cabecera">
+      <h2 id="tituloDetalleLlevar">📦 Para llevar</h2>
+      <button class="cerrar-modal" id="cerrarDetalleLlevar">✕</button>
+    </div>
+    <div id="ticketDetalleLlevar"></div>
+  </div>
+</div>
+
 <script>
 let socket = null;
 let mesas = [];
 let carta = { categorias: [], productos: [] };
 let pedidosPorMesa = {}; // numero de mesa -> array de pedidos activos
+let pedidosLlevar = []; // pedidos activos para llevar (tipo === 'llevar')
 let mesaAbiertaActual = null;
 let carritoNuevaComanda = []; // { id, nombre, precio, cantidad }
+let carritoLlevar = [];
+let detalleLlevarAbiertoId = null;
 
 const tablero = document.getElementById("tablero");
+const tableroLlevar = document.getElementById("tableroLlevar");
 const estadoConexion = document.getElementById("estadoConexion");
 const overlayMesa = document.getElementById("overlayMesa");
+const overlayNuevoLlevar = document.getElementById("overlayNuevoLlevar");
+const overlayDetalleLlevar = document.getElementById("overlayDetalleLlevar");
 
 function formatoPrecio(n) {
   return Number(n).toFixed(2).replace(".", ",") + " €";
@@ -600,6 +699,210 @@ overlayMesa.addEventListener("click", (e) => {
   }
 });
 
+// ---------- Para llevar: tablero ----------
+function renderTableroLlevar() {
+  if (pedidosLlevar.length === 0) {
+    tableroLlevar.innerHTML = '<p class="sin-mesas">Sin pedidos para llevar.</p>';
+    return;
+  }
+
+  tableroLlevar.innerHTML = "";
+  pedidosLlevar.forEach(pedido => {
+    const card = document.createElement("div");
+    card.className = "llevar-card " + pedido.estado;
+    card.innerHTML = `
+      <span class="telefono">📞 ${pedido.telefono}</span>
+      <span class="estado-texto">${textoEstado(pedido.estado)}</span>
+    `;
+    card.addEventListener("click", () => abrirDetalleLlevar(pedido.id));
+    tableroLlevar.appendChild(card);
+  });
+}
+
+function abrirDetalleLlevar(pedidoId) {
+  const pedido = pedidosLlevar.find(p => p.id === pedidoId);
+  if (!pedido) return;
+  detalleLlevarAbiertoId = pedidoId;
+  renderDetalleLlevar();
+  overlayDetalleLlevar.classList.add("visible");
+}
+
+function renderDetalleLlevar() {
+  const pedido = pedidosLlevar.find(p => p.id === detalleLlevarAbiertoId);
+  const contenedor = document.getElementById("ticketDetalleLlevar");
+  if (!pedido) {
+    contenedor.innerHTML = '<p class="sin-pedido-activo">Este pedido ya no está activo.</p>';
+    return;
+  }
+
+  document.getElementById("tituloDetalleLlevar").textContent = "📦 " + pedido.telefono;
+
+  const lineas = pedido.items.map(item => `
+    <div class="linea-item">
+      <span><span class="cant">${item.cantidad}x</span>${item.nombre}</span>
+    </div>
+  `).join("");
+
+  const div = document.createElement("div");
+  div.className = "ticket-activo" + (pedido.estado === "listo" ? " listo" : "");
+  div.innerHTML = `
+    ${lineas}
+    <div class="fila-accion">
+      <span class="badge-estado">${textoEstado(pedido.estado)} · ${formatoPrecio(pedido.total)}</span>
+    </div>
+  `;
+
+  if (pedido.estado === "listo") {
+    const boton = document.createElement("button");
+    boton.className = "btn-entregado";
+    boton.textContent = "Marcar entregado";
+    boton.addEventListener("click", () => {
+      socket.emit("pedido-entregado", { id: pedido.id });
+      overlayDetalleLlevar.classList.remove("visible");
+      detalleLlevarAbiertoId = null;
+    });
+    div.querySelector(".fila-accion").appendChild(boton);
+  }
+
+  contenedor.innerHTML = "";
+  contenedor.appendChild(div);
+}
+
+document.getElementById("cerrarDetalleLlevar").addEventListener("click", () => {
+  overlayDetalleLlevar.classList.remove("visible");
+  detalleLlevarAbiertoId = null;
+});
+overlayDetalleLlevar.addEventListener("click", (e) => {
+  if (e.target === overlayDetalleLlevar) {
+    overlayDetalleLlevar.classList.remove("visible");
+    detalleLlevarAbiertoId = null;
+  }
+});
+
+// ---------- Para llevar: crear pedido nuevo ----------
+function abrirNuevoLlevar() {
+  carritoLlevar = [];
+  document.getElementById("telefonoLlevar").value = "";
+  renderTabsCategoriasLlevar();
+  renderCarritoLlevar();
+  overlayNuevoLlevar.classList.add("visible");
+}
+
+function renderTabsCategoriasLlevar() {
+  const tabs = document.getElementById("tabsMiniLlevar");
+  tabs.innerHTML = "";
+  carta.categorias.forEach((cat, i) => {
+    const btn = document.createElement("button");
+    btn.className = "tab-mini" + (i === 0 ? " activa" : "");
+    btn.textContent = cat.nombre;
+    btn.addEventListener("click", () => {
+      tabs.querySelectorAll(".tab-mini").forEach(b => b.classList.remove("activa"));
+      btn.classList.add("activa");
+      renderListaProductosLlevar(cat.id);
+    });
+    tabs.appendChild(btn);
+  });
+  if (carta.categorias.length > 0) {
+    renderListaProductosLlevar(carta.categorias[0].id);
+  }
+}
+
+function renderListaProductosLlevar(categoriaId) {
+  const lista = document.getElementById("listaProductosLlevar");
+  lista.innerHTML = "";
+  carta.productos
+    .filter(p => p.categoria_id === categoriaId)
+    .forEach(p => {
+      const fila = document.createElement("div");
+      fila.className = "producto-fila";
+      fila.innerHTML = `
+        <span class="nombre">${p.nombre}</span>
+        <span class="precio">${formatoPrecio(p.precio)}</span>
+      `;
+      const boton = document.createElement("button");
+      boton.className = "btn-add-mini";
+      boton.textContent = "+";
+      boton.addEventListener("click", () => añadirALlevar(p));
+      fila.appendChild(boton);
+      lista.appendChild(fila);
+    });
+}
+
+function añadirALlevar(producto) {
+  const existente = carritoLlevar.find(item => item.id === producto.id);
+  if (existente) {
+    existente.cantidad += 1;
+  } else {
+    carritoLlevar.push({ id: producto.id, nombre: producto.nombre, precio: producto.precio, cantidad: 1 });
+  }
+  renderCarritoLlevar();
+}
+
+function quitarDeLlevar(id) {
+  carritoLlevar = carritoLlevar.filter(item => item.id !== id);
+  renderCarritoLlevar();
+}
+
+function totalLlevar() {
+  return carritoLlevar.reduce((suma, item) => suma + item.precio * item.cantidad, 0);
+}
+
+function renderCarritoLlevar() {
+  const filas = document.getElementById("filasCarritoLlevar");
+  filas.innerHTML = "";
+
+  if (carritoLlevar.length === 0) {
+    filas.innerHTML = '<p class="sin-pedido-activo">Toca "+" en un producto para añadirlo.</p>';
+  } else {
+    carritoLlevar.forEach(item => {
+      const fila = document.createElement("div");
+      fila.className = "fila-carrito";
+      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>`;
+      const quitar = document.createElement("button");
+      quitar.textContent = "quitar";
+      quitar.addEventListener("click", () => quitarDeLlevar(item.id));
+      fila.appendChild(quitar);
+      filas.appendChild(fila);
+    });
+  }
+
+  const telefonoValido = document.getElementById("telefonoLlevar").value.trim().length > 0;
+  document.getElementById("totalLlevar").textContent = formatoPrecio(totalLlevar());
+  document.getElementById("btnEnviarLlevar").disabled = carritoLlevar.length === 0 || !telefonoValido;
+}
+
+document.getElementById("telefonoLlevar").addEventListener("input", renderCarritoLlevar);
+
+document.getElementById("btnEnviarLlevar").addEventListener("click", () => {
+  const telefono = document.getElementById("telefonoLlevar").value.trim();
+  if (carritoLlevar.length === 0 || !telefono) return;
+
+  const items = carritoLlevar.map(item => ({
+    nombre: item.nombre,
+    precio: item.precio,
+    cantidad: item.cantidad,
+    notas: ""
+  }));
+
+  socket.emit("nuevo-pedido", {
+    tipo: "llevar",
+    telefono,
+    items,
+    total: totalLlevar()
+  });
+
+  overlayNuevoLlevar.classList.remove("visible");
+  carritoLlevar = [];
+});
+
+document.getElementById("btnNuevoLlevar").addEventListener("click", abrirNuevoLlevar);
+document.getElementById("cerrarNuevoLlevar").addEventListener("click", () => {
+  overlayNuevoLlevar.classList.remove("visible");
+});
+overlayNuevoLlevar.addEventListener("click", (e) => {
+  if (e.target === overlayNuevoLlevar) overlayNuevoLlevar.classList.remove("visible");
+});
+
 // ---------- Carga de datos y conexión ----------
 async function cargarMesas(urlBase) {
   const respuesta = await fetch(urlBase + "/api/mesas");
@@ -615,7 +918,12 @@ async function cargarPedidosPendientes(urlBase) {
   const respuesta = await fetch(urlBase + "/api/pedidos/pendientes");
   const pedidos = await respuesta.json();
   pedidosPorMesa = {};
+  pedidosLlevar = [];
   pedidos.forEach(p => {
+    if (p.tipo === "llevar") {
+      pedidosLlevar.push(p);
+      return;
+    }
     const numero = extraerNumeroMesa(p.mesa);
     if (numero === null) return;
     if (!pedidosPorMesa[numero]) pedidosPorMesa[numero] = [];
@@ -628,12 +936,15 @@ function actualizarPedidoPorId(id, cambios) {
     const pedido = lista.find(p => p.id === id);
     if (pedido) Object.assign(pedido, cambios);
   });
+  const pedidoLlevar = pedidosLlevar.find(p => p.id === id);
+  if (pedidoLlevar) Object.assign(pedidoLlevar, cambios);
 }
 
 function quitarPedidoDeMesa(id) {
   Object.keys(pedidosPorMesa).forEach(numero => {
     pedidosPorMesa[numero] = pedidosPorMesa[numero].filter(p => p.id !== id);
   });
+  pedidosLlevar = pedidosLlevar.filter(p => p.id !== id);
 }
 
 async function conectar() {
@@ -645,6 +956,7 @@ async function conectar() {
   try {
     await Promise.all([cargarMesas(urlBase), cargarCarta(urlBase), cargarPedidosPendientes(urlBase)]);
     renderTablero();
+    renderTableroLlevar();
   } catch (error) {
     console.error(error);
     tablero.innerHTML = '<p class="sin-mesas">No se pudo cargar del backend. Comprueba la URL.</p>';
@@ -666,6 +978,11 @@ async function conectar() {
   });
 
   socket.on("pedido-recibido", (pedido) => {
+    if (pedido.tipo === "llevar") {
+      pedidosLlevar.push(pedido);
+      renderTableroLlevar();
+      return;
+    }
     const numero = extraerNumeroMesa(pedido.mesa);
     if (numero === null) return;
     if (!pedidosPorMesa[numero]) pedidosPorMesa[numero] = [];
@@ -681,7 +998,9 @@ async function conectar() {
       actualizarPedidoPorId(datos.id, { estado: datos.estado });
     }
     renderTablero();
+    renderTableroLlevar();
     if (mesaAbiertaActual !== null) renderPedidosActivos();
+    if (detalleLlevarAbiertoId !== null) renderDetalleLlevar();
   });
 }
 

@@ -15,14 +15,18 @@ const io = new Server(server, {
 
 // ---------- Consultas preparadas ----------
 const insertarPedido = db.prepare(
-  `INSERT INTO pedidos (mesa, estado, creado_en, total) VALUES (?, 'enviado', datetime('now'), ?)`
+  `INSERT INTO pedidos (mesa, estado, creado_en, total, tipo, telefono) VALUES (?, 'enviado', datetime('now'), ?, ?, ?)`
 );
 const insertarItem = db.prepare(
   `INSERT INTO pedido_items (pedido_id, nombre, precio_unitario, cantidad, notas) VALUES (?, ?, ?, ?, ?)`
 );
 const actualizarEstadoPedido = db.prepare(`UPDATE pedidos SET estado = ? WHERE id = ?`);
+const actualizarItemPreparado = db.prepare(`UPDATE pedido_items SET preparado = ? WHERE id = ?`);
 const pedidosPendientes = db.prepare(
   `SELECT * FROM pedidos WHERE estado != 'entregado' ORDER BY creado_en ASC`
+);
+const pedidosHistorico = db.prepare(
+  `SELECT * FROM pedidos WHERE estado = 'entregado' ORDER BY creado_en DESC LIMIT 50`
 );
 const itemsDePedido = db.prepare(`SELECT * FROM pedido_items WHERE pedido_id = ?`);
 
@@ -38,6 +42,17 @@ function obtenerPedidosPendientesConItems() {
 // pedidos que ya estaban en curso antes de conectarse el socket.
 app.get('/api/pedidos/pendientes', (req, res) => {
   res.json(obtenerPedidosPendientesConItems());
+});
+
+// Histórico — para recuperar comandas ya entregadas en caso de error o duda.
+// Limitado a las últimas 50 para no cargar de más; si hace falta buscar más
+// atrás, esto es lo primero que habría que ampliar (filtro por fecha, etc.)
+app.get('/api/pedidos/historico', (req, res) => {
+  const historico = pedidosHistorico.all().map(pedido => ({
+    ...pedido,
+    items: itemsDePedido.all(pedido.id)
+  }));
+  res.json(historico);
 });
 
 // Origen único de verdad para el número de mesas — lo consumen tanto
@@ -73,38 +88,70 @@ io.on('connection', (socket) => {
     socket.join('camarero');
   });
 
-  // La carta digital manda esto cuando el cliente confirma el pedido
+  // La carta digital (o camarero, para comandas manuales/para llevar)
+  // manda esto cuando se confirma un pedido.
   socket.on('nuevo-pedido', (datos) => {
     try {
-      const { mesa, items, total } = datos;
+      const { items, total } = datos;
+      const tipo = datos.tipo === 'llevar' ? 'llevar' : 'mesa';
+      const mesa = tipo === 'mesa' ? datos.mesa : null;
+      const telefono = tipo === 'llevar' ? (datos.telefono || '').trim() : '';
 
-      if (!mesa || !Array.isArray(items) || items.length === 0) {
+      if (!Array.isArray(items) || items.length === 0) {
         socket.emit('error-pedido', { mensaje: 'Pedido incompleto' });
         return;
       }
+      if (tipo === 'mesa' && !mesa) {
+        socket.emit('error-pedido', { mensaje: 'Falta la mesa' });
+        return;
+      }
+      if (tipo === 'llevar' && !telefono) {
+        socket.emit('error-pedido', { mensaje: 'Falta el teléfono de contacto' });
+        return;
+      }
 
-      const resultado = insertarPedido.run(mesa, total);
+      const resultado = insertarPedido.run(mesa, total, tipo, telefono);
       const pedidoId = resultado.lastInsertRowid;
 
-      items.forEach(item => {
-        insertarItem.run(pedidoId, item.nombre, item.precio, item.cantidad, item.notas || '');
+      // Guardamos cada línea y nos quedamos con el id real que le da la BD,
+      // porque cocina necesita ese id para marcar líneas sueltas como preparadas.
+      const itemsConId = items.map(item => {
+        const resultadoItem = insertarItem.run(pedidoId, item.nombre, item.precio, item.cantidad, item.notas || '');
+        return {
+          id: resultadoItem.lastInsertRowid,
+          nombre: item.nombre,
+          precio_unitario: item.precio,
+          cantidad: item.cantidad,
+          notas: item.notas || '',
+          preparado: 0
+        };
       });
 
       const pedidoCompleto = {
         id: pedidoId,
         mesa,
-        items,
+        tipo,
+        telefono,
+        items: itemsConId,
         total,
         estado: 'enviado',
         creado_en: new Date().toISOString()
       };
 
       io.to('cocina').to('camarero').emit('pedido-recibido', pedidoCompleto);
-      socket.emit('pedido-confirmado', { id: pedidoId, mesa });
+      socket.emit('pedido-confirmado', { id: pedidoId, mesa, tipo });
     } catch (error) {
       console.error('Error al guardar pedido:', error);
       socket.emit('error-pedido', { mensaje: 'No se pudo procesar el pedido' });
     }
+  });
+
+  // Cocina marca (o desmarca) una línea suelta como preparada, antes de
+  // cerrar el pedido completo.
+  socket.on('item-preparado', (datos) => {
+    const { itemId, preparado } = datos;
+    actualizarItemPreparado.run(preparado ? 1 : 0, itemId);
+    io.to('cocina').to('camarero').emit('item-actualizado', { itemId, preparado: !!preparado });
   });
 
   // Cocina marca un pedido como listo
