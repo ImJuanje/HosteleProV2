@@ -991,7 +991,7 @@ async function conectar() {
     if (mesaAbiertaActual === numero) renderPedidosActivos();
   });
 
-  socket.on("pedido-actualizado", (datos) => {
+socket.on("pedido-actualizado", (datos) => {
     if (datos.estado === "entregado") {
       quitarPedidoDeMesa(datos.id);
     } else {
@@ -1001,6 +1001,12 @@ async function conectar() {
     renderTableroLlevar();
     if (mesaAbiertaActual !== null) renderPedidosActivos();
     if (detalleLlevarAbiertoId !== null) renderDetalleLlevar();
+  });
+
+  // Si el backend rechaza un pedido (mesa inválida, teléfono vacío, error
+  // de base de datos, etc.) lo avisamos aquí en vez de fallar en silencio.
+  socket.on("error-pedido", (datos) => {
+    alert("No se pudo enviar el pedido: " + (datos.mensaje || "error desconocido"));
   });
 }
 

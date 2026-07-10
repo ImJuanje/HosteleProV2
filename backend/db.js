@@ -69,4 +69,38 @@ if (!columnaExiste('pedidos', 'telefono')) {
   db.exec(`ALTER TABLE pedidos ADD COLUMN telefono TEXT DEFAULT ''`);
 }
 
+// Migración extra: si la tabla "pedidos" viene de antes de que existieran
+// los pedidos "para llevar", la columna "mesa" quedó como NOT NULL. SQLite
+// no permite quitar un NOT NULL con ALTER TABLE, así que si detectamos que
+// sigue así, reconstruimos la tabla entera (mismo contenido, sin esa
+// restricción) para poder guardar pedidos sin mesa asignada.
+const infoMesa = db.prepare(`PRAGMA table_info(pedidos)`).all().find(c => c.name === 'mesa');
+if (infoMesa && infoMesa.notnull === 1) {
+  console.log('Migrando tabla "pedidos": quitando NOT NULL de "mesa" para permitir pedidos para llevar...');
+  db.pragma('foreign_keys = OFF'); // si no, el DROP TABLE de abajo choca con la FK de pedido_items
+  db.exec(`
+    BEGIN TRANSACTION;
+
+    CREATE TABLE pedidos_nueva (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mesa TEXT,
+      estado TEXT NOT NULL DEFAULT 'enviado',
+      creado_en TEXT NOT NULL,
+      total REAL NOT NULL,
+      tipo TEXT NOT NULL DEFAULT 'mesa',
+      telefono TEXT DEFAULT ''
+    );
+
+    INSERT INTO pedidos_nueva (id, mesa, estado, creado_en, total, tipo, telefono)
+    SELECT id, mesa, estado, creado_en, total, tipo, telefono FROM pedidos;
+
+    DROP TABLE pedidos;
+    ALTER TABLE pedidos_nueva RENAME TO pedidos;
+
+    COMMIT;
+  `);
+  db.pragma('foreign_keys = ON');
+  console.log('Migración de "pedidos" completada.');
+}
+
 module.exports = db;
