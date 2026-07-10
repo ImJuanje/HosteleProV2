@@ -297,7 +297,14 @@ function renderTicket(pedido) {
   const lineas = pedido.items.map(item => `
     <label class="ticket-linea${item.preparado ? " preparada" : ""}" data-item-id="${item.id}">
       <input type="checkbox" ${item.preparado ? "checked" : ""}>
-      <span><span class="cant">${item.cantidad}x</span>${item.nombre}${item.notas ? " — " + item.notas : ""}</span>
+      <span><span class="cant">${item.cantidad}x</span>${item.nombre}</span>
+        ${
+        item.notas
+          ?`<div class="observacion-cocina">
+          ⚠️ ${item.notas}
+        </div>`
+        :""
+        }
     </label>
   `).join("");
 
