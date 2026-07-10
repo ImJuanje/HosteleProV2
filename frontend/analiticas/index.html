@@ -111,7 +111,7 @@
 
   <div class="stats-grid">
 
-```
+
 <div class="card">
   <h3>💰 Caja Total</h3>
   <div class="value" id="caja">0 €</div>
@@ -126,13 +126,13 @@
   <h3>🍽️ Comandas Atendidas</h3>
   <div class="value" id="comandas">0</div>
 </div>
-```
+
 
   </div>
 
   <div class="ranking-grid">
 
-```
+
 <div class="ranking-card">
   <h2>🥔 Para Picar</h2>
   <ul id="ranking-picar">
@@ -160,7 +160,7 @@
     <li class="loading">Cargando...</li>
   </ul>
 </div>
-```
+
 
   </div>
 
@@ -209,12 +209,12 @@ function renderRanking(id, items){
     return;
   }
 
-  ul.innerHTML = items.map(item => `
+  ul.innerHTML = items.map(item => 
     <li>
       <span>${item.nombre}</span>
       <strong>${item.ventas}</strong>
     </li>
-  `).join('');
+  ).join('');
 
 }
 

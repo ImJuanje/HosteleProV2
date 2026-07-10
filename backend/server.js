@@ -72,6 +72,68 @@ app.get('/api/carta', (req, res) => {
   res.json({ categorias, productos });
 });
 
+app.get('/api/analytics', (req, res) => {
+
+  try {
+
+    const caja = db.prepare(`
+      SELECT COALESCE(SUM(total), 0) as total
+      FROM pedidos
+      WHERE estado = 'entregado'
+    `).get();
+
+    const ticket = db.prepare(`
+      SELECT ROUND(AVG(total), 2) as media
+      FROM pedidos
+      WHERE estado = 'entregado'
+    `).get();
+
+    const comandas = db.prepare(`
+      SELECT COUNT(*) as total
+      FROM pedidos
+      WHERE estado = 'entregado'
+    `).get();
+
+    const getTop = (categoria) => {
+
+      return db.prepare(`
+        SELECT
+          pi.nombre,
+          SUM(pi.cantidad) as ventas
+        FROM pedido_items pi
+        JOIN productos p
+          ON p.nombre = pi.nombre
+        WHERE p.categoria_id = ?
+        GROUP BY pi.nombre
+        ORDER BY ventas DESC
+        LIMIT 5
+      `).all(categoria);
+
+    };
+
+    res.json({
+      caja: caja.total || 0,
+      ticket: ticket.media || 0,
+      comandas: comandas.total || 0,
+      picar: getTop('picar'),
+      raciones: getTop('raciones'),
+      bebidas: getTop('bebidas'),
+      postres: getTop('postres')
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      error: 'analytics_error'
+    });
+
+  }
+
+});
+
+
 app.get('/', (req, res) => {
   res.send('HosteléPro backend funcionando');
 });
