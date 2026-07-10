@@ -655,7 +655,19 @@ function renderCarritoNuevaComanda() {
     carritoNuevaComanda.forEach(item => {
       const fila = document.createElement("div");
       fila.className = "fila-carrito";
-      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>`;
+      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>
+      
+      <textarea
+        class="nota-item"
+        placeholder="Sin cebolla, poco hecha, sin gluten..."
+      >${item.notas || ""}</textarea>
+  `;
+
+      const textarea = fila.querySelector(".nota-item");
+      textarea.addEventListener("input", e => {
+        item.notas = e.target.value;
+      });
+
       const quitar = document.createElement("button");
       quitar.textContent = "quitar";
       quitar.addEventListener("click", () => quitarDeNuevaComanda(item.id));
@@ -675,7 +687,7 @@ document.getElementById("btnEnviarNuevaComanda").addEventListener("click", () =>
     nombre: item.nombre,
     precio: item.precio,
     cantidad: item.cantidad,
-    notas: ""
+    notas: item.notas|| ""
   }));
 
   socket.emit("nuevo-pedido", {
@@ -857,7 +869,19 @@ function renderCarritoLlevar() {
     carritoLlevar.forEach(item => {
       const fila = document.createElement("div");
       fila.className = "fila-carrito";
-      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>`;
+      fila.innerHTML = `<span>${item.cantidad}x ${item.nombre} — ${formatoPrecio(item.precio * item.cantidad)}</span>
+      
+       <textarea
+        class="nota-item"
+        placeholder="Sin cebolla, poco hecha, sin gluten..."
+      >${item.notas || ""}</textarea>`;
+
+      const textarea = fila.querySelector(".nota-item");
+
+      textarea.addEventListener("input", e => {
+        item.notas = e.target.value;
+      });
+
       const quitar = document.createElement("button");
       quitar.textContent = "quitar";
       quitar.addEventListener("click", () => quitarDeLlevar(item.id));
@@ -881,7 +905,7 @@ document.getElementById("btnEnviarLlevar").addEventListener("click", () => {
     nombre: item.nombre,
     precio: item.precio,
     cantidad: item.cantidad,
-    notas: ""
+    notas:item.notas|| ""
   }));
 
   socket.emit("nuevo-pedido", {
