@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HostelePro | Analíticas</title>
+
+  <style>
+    *{
+      margin:0;
+      padding:0;
+      box-sizing:border-box;
+    }
+
+    body{
+      font-family:Arial, Helvetica, sans-serif;
+      background:#f4f6f8;
+      padding:24px;
+      color:#222;
+    }
+
+    .container{
+      max-width:1400px;
+      margin:auto;
+    }
+
+    .header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:24px;
+    }
+
+    .header h1{
+      font-size:2rem;
+    }
+
+    .stats-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+      gap:20px;
+      margin-bottom:30px;
+    }
+
+    .card{
+      background:white;
+      border-radius:16px;
+      padding:24px;
+      box-shadow:0 2px 12px rgba(0,0,0,.08);
+    }
+
+    .card h3{
+      color:#666;
+      font-size:1rem;
+      margin-bottom:10px;
+    }
+
+    .card .value{
+      font-size:2rem;
+      font-weight:bold;
+    }
+
+    .ranking-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+      gap:20px;
+    }
+
+    .ranking-card{
+      background:white;
+      border-radius:16px;
+      padding:24px;
+      box-shadow:0 2px 12px rgba(0,0,0,.08);
+    }
+
+    .ranking-card h2{
+      margin-bottom:15px;
+    }
+
+    .ranking-card ul{
+      list-style:none;
+    }
+
+    .ranking-card li{
+      display:flex;
+      justify-content:space-between;
+      padding:10px 0;
+      border-bottom:1px solid #eee;
+    }
+
+    .ranking-card li:last-child{
+      border-bottom:none;
+    }
+
+    .loading{
+      text-align:center;
+      padding:20px;
+      color:#777;
+    }
+  </style>
+
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <h1>📊 Analíticas</h1>
+  </div>
+
+  <div class="stats-grid">
+
+```
+<div class="card">
+  <h3>💰 Caja Total</h3>
+  <div class="value" id="caja">0 €</div>
+</div>
+
+<div class="card">
+  <h3>📊 Ticket Medio</h3>
+  <div class="value" id="ticket">0 €</div>
+</div>
+
+<div class="card">
+  <h3>🍽️ Comandas Atendidas</h3>
+  <div class="value" id="comandas">0</div>
+</div>
+```
+
+  </div>
+
+  <div class="ranking-grid">
+
+```
+<div class="ranking-card">
+  <h2>🥔 Para Picar</h2>
+  <ul id="ranking-picar">
+    <li class="loading">Cargando...</li>
+  </ul>
+</div>
+
+<div class="ranking-card">
+  <h2>🍖 Raciones</h2>
+  <ul id="ranking-raciones">
+    <li class="loading">Cargando...</li>
+  </ul>
+</div>
+
+<div class="ranking-card">
+  <h2>🥤 Bebidas</h2>
+  <ul id="ranking-bebidas">
+    <li class="loading">Cargando...</li>
+  </ul>
+</div>
+
+<div class="ranking-card">
+  <h2>🍰 Postres</h2>
+  <ul id="ranking-postres">
+    <li class="loading">Cargando...</li>
+  </ul>
+</div>
+```
+
+  </div>
+
+</div>
+
+<script>
+
+async function cargarAnaliticas() {
+
+  try {
+
+    const res = await fetch('/api/analytics');
+    const data = await res.json();
+
+    document.getElementById('caja').textContent =
+      Number(data.caja || 0).toFixed(2) + ' €';
+
+    document.getElementById('ticket').textContent =
+      Number(data.ticket || 0).toFixed(2) + ' €';
+
+    document.getElementById('comandas').textContent =
+      data.comandas || 0;
+
+    renderRanking('ranking-picar', data.picar);
+    renderRanking('ranking-raciones', data.raciones);
+    renderRanking('ranking-bebidas', data.bebidas);
+    renderRanking('ranking-postres', data.postres);
+
+  } catch(err) {
+
+    console.error(err);
+
+  }
+
+}
+
+function renderRanking(id, items){
+
+  const ul = document.getElementById(id);
+
+  if(!items || !items.length){
+
+    ul.innerHTML =
+      '<li>No hay datos disponibles</li>';
+
+    return;
+  }
+
+  ul.innerHTML = items.map(item => `
+    <li>
+      <span>${item.nombre}</span>
+      <strong>${item.ventas}</strong>
+    </li>
+  `).join('');
+
+}
+
+cargarAnaliticas();
+
+</script>
+
+</body>
+</html>
