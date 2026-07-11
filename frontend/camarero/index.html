@@ -185,6 +185,109 @@
     padding: 4px 8px;
   }
 
+  .acciones-cabecera-mesa {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-cobrar {
+    background: var(--mostaza);
+    color: var(--pizarra);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 700;
+    font-family: var(--f-ticket);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .btn-cobrar:hover { filter: brightness(1.08); }
+
+  /* ---------- Ticket de cobro ---------- */
+  .resumen-cobro-vacio {
+    color: var(--tiza-tenue);
+    font-family: var(--f-ticket);
+    font-size: 13px;
+    padding: 20px 0;
+    text-align: center;
+  }
+  #ticketImprimible {
+    background: var(--pizarra);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: var(--f-ticket);
+    font-size: 13px;
+  }
+  #ticketImprimible .cabecera-ticket {
+    text-align: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--linea);
+  }
+  #ticketImprimible .cabecera-ticket .nombre-negocio {
+    font-family: var(--f-display);
+    font-size: 26px;
+    color: var(--mostaza);
+    display: block;
+  }
+  #ticketImprimible .cabecera-ticket small { color: var(--tiza-tenue); }
+  #ticketImprimible .linea-ticket {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  #ticketImprimible .linea-ticket .cant { color: var(--mostaza); margin-right: 6px; }
+  #ticketImprimible .total-ticket {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--linea);
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .acciones-cobro {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .btn-imprimir-ticket, .btn-confirmar-cobro {
+    flex: 1;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .btn-imprimir-ticket {
+    background: var(--pizarra-alta);
+    color: var(--tiza);
+    border: 1px solid var(--linea);
+  }
+  .btn-confirmar-cobro {
+    background: var(--oliva);
+    color: var(--pizarra);
+  }
+
+  /* Al imprimir, solo se ve el propio ticket — nada del resto de la app
+     (tablero, otros overlays, botones...). */
+  @media print {
+    body * { visibility: hidden; }
+    #ticketImprimible, #ticketImprimible * { visibility: visible; }
+    #ticketImprimible {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background: #fff;
+      color: #000;
+    }
+    #ticketImprimible .cabecera-ticket .nombre-negocio { color: #000; }
+    #ticketImprimible .cant { color: #000; }
+  }
+
   .subtitulo-seccion {
     font-family: var(--f-ticket);
     font-size: 11px;
@@ -414,7 +517,10 @@
   <div class="panel-modal">
     <div class="panel-cabecera">
       <h2 id="tituloMesaModal">MESA</h2>
-      <button class="cerrar-modal" id="cerrarModalMesa">✕</button>
+      <div class="acciones-cabecera-mesa">
+        <button class="btn-cobrar" id="btnCobrarMesa">💳 Cobrar</button>
+        <button class="cerrar-modal" id="cerrarModalMesa">✕</button>
+      </div>
     </div>
 
     <div class="subtitulo-seccion">Pedidos activos</div>
@@ -432,6 +538,18 @@
       </div>
     </div>
     <button class="btn-enviar-comanda" id="btnEnviarNuevaComanda" disabled>Enviar a cocina</button>
+  </div>
+</div>
+
+<!-- Ticket de cobro de una mesa: suma todas las rondas servidas y no
+     cobradas todavía, con opción de imprimir y de confirmar el cobro. -->
+<div class="overlay" id="overlayCobro">
+  <div class="panel-modal">
+    <div class="panel-cabecera">
+      <h2 id="tituloCobroModal">Cuenta</h2>
+      <button class="cerrar-modal" id="cerrarModalCobro">✕</button>
+    </div>
+    <div id="contenidoCobro"></div>
   </div>
 </div>
 
@@ -474,6 +592,7 @@
 
 <script>
 let socket = null;
+let urlBackendActual = "";
 let mesas = [];
 let carta = { categorias: [], productos: [] };
 let pedidosPorMesa = {}; // numero de mesa -> array de pedidos activos
@@ -487,6 +606,7 @@ const tablero = document.getElementById("tablero");
 const tableroLlevar = document.getElementById("tableroLlevar");
 const estadoConexion = document.getElementById("estadoConexion");
 const overlayMesa = document.getElementById("overlayMesa");
+const overlayCobro = document.getElementById("overlayCobro");
 const overlayNuevoLlevar = document.getElementById("overlayNuevoLlevar");
 const overlayDetalleLlevar = document.getElementById("overlayDetalleLlevar");
 
@@ -709,6 +829,89 @@ overlayMesa.addEventListener("click", (e) => {
     overlayMesa.classList.remove("visible");
     mesaAbiertaActual = null;
   }
+});
+
+// ---------- Cobrar mesa ----------
+// Guardamos la mesa de la que se está mostrando el ticket, porque el
+// camarero puede cerrar el detalle de la mesa por debajo mientras decide
+// si imprime o no, y no queremos perder la referencia.
+let mesaEnCobroActual = null;
+
+async function abrirCobroMesa() {
+  if (mesaAbiertaActual === null || !urlBackendActual) return;
+  const mesaTexto = "MESA " + mesaAbiertaActual;
+  mesaEnCobroActual = mesaAbiertaActual;
+
+  document.getElementById("tituloCobroModal").textContent = mesaTexto;
+  document.getElementById("contenidoCobro").innerHTML = '<p class="resumen-cobro-vacio">Calculando la cuenta...</p>';
+  overlayCobro.classList.add("visible");
+
+  try {
+    const respuesta = await fetch(urlBackendActual + "/api/mesas/" + encodeURIComponent(mesaTexto) + "/cuenta");
+    const cuenta = await respuesta.json();
+    renderTicketCobro(mesaTexto, cuenta);
+  } catch (error) {
+    console.error("No se pudo cargar la cuenta de la mesa:", error);
+    document.getElementById("contenidoCobro").innerHTML =
+      '<p class="resumen-cobro-vacio">No se pudo cargar la cuenta. Comprueba la conexión.</p>';
+  }
+}
+
+function renderTicketCobro(mesaTexto, cuenta) {
+  const contenedor = document.getElementById("contenidoCobro");
+
+  if (!cuenta.itemsAgrupados || cuenta.itemsAgrupados.length === 0) {
+    contenedor.innerHTML = '<p class="resumen-cobro-vacio">Esta mesa no tiene nada pendiente de cobro.</p>';
+    return;
+  }
+
+  const fechaTexto = new Date().toLocaleString("es-ES", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+  });
+
+  const lineas = cuenta.itemsAgrupados.map(item => `
+    <div class="linea-ticket">
+      <span><span class="cant">${item.cantidad}x</span>${item.nombre}</span>
+      <span>${formatoPrecio(item.subtotal)}</span>
+    </div>
+  `).join("");
+
+  contenedor.innerHTML = `
+    <div id="ticketImprimible">
+      <div class="cabecera-ticket">
+        <span class="nombre-negocio">HosteléPro</span>
+        <small>${mesaTexto} · ${fechaTexto}</small>
+      </div>
+      ${lineas}
+      <div class="total-ticket">
+        <span>Total</span>
+        <span>${formatoPrecio(cuenta.total)}</span>
+      </div>
+    </div>
+    <div class="acciones-cobro">
+      <button class="btn-imprimir-ticket" id="btnImprimirTicket">🖨️ Imprimir</button>
+      <button class="btn-confirmar-cobro" id="btnConfirmarCobro">✅ Confirmar cobro</button>
+    </div>
+  `;
+
+  document.getElementById("btnImprimirTicket").addEventListener("click", () => {
+    window.print();
+  });
+
+  document.getElementById("btnConfirmarCobro").addEventListener("click", () => {
+    socket.emit("cobrar-mesa", { mesa: mesaTexto });
+    overlayCobro.classList.remove("visible");
+    overlayMesa.classList.remove("visible");
+    mesaAbiertaActual = null;
+  });
+}
+
+document.getElementById("btnCobrarMesa").addEventListener("click", abrirCobroMesa);
+document.getElementById("cerrarModalCobro").addEventListener("click", () => {
+  overlayCobro.classList.remove("visible");
+});
+overlayCobro.addEventListener("click", (e) => {
+  if (e.target === overlayCobro) overlayCobro.classList.remove("visible");
 });
 
 // ---------- Para llevar: tablero ----------
@@ -974,6 +1177,7 @@ function quitarPedidoDeMesa(id) {
 async function conectar() {
   const urlBase = document.getElementById("urlServidor").value.trim().replace(/\/$/, "");
   if (!urlBase) return;
+  urlBackendActual = urlBase;
 
   tablero.innerHTML = '<p class="sin-mesas">Cargando mesas y carta...</p>';
 
@@ -1025,6 +1229,15 @@ socket.on("pedido-actualizado", (datos) => {
     renderTableroLlevar();
     if (mesaAbiertaActual !== null) renderPedidosActivos();
     if (detalleLlevarAbiertoId !== null) renderDetalleLlevar();
+  });
+
+  // Si algo pasa la mesa a "entregado"/cobrada desde otro dispositivo
+  // mientras tenemos el ticket de cobro abierto para esa misma mesa,
+  // evitamos cobrar dos veces cerrando el ticket con aviso.
+  socket.on("mesa-cobrada", (datos) => {
+    if (mesaEnCobroActual !== null && ("MESA " + mesaEnCobroActual) === datos.mesa && overlayCobro.classList.contains("visible")) {
+      overlayCobro.classList.remove("visible");
+    }
   });
 
   // Si el backend rechaza un pedido (mesa inválida, teléfono vacío, error

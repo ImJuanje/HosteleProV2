@@ -30,6 +30,18 @@ const pedidosHistorico = db.prepare(
 );
 const itemsDePedido = db.prepare(`SELECT * FROM pedido_items WHERE pedido_id = ?`);
 
+// Todo lo servido en una mesa que aún no se ha cobrado — esto es lo que
+// alimenta el botón "Cobrar", y es intencionadamente independiente de lo
+// que la pantalla del camarero tenga cargado en memoria en ese momento
+// (los pedidos ya "entregados" desaparecen del tablero activo, pero siguen
+// pendientes de cobro hasta que se pulsa "Cobrar").
+const cuentaDeMesa = db.prepare(
+  `SELECT * FROM pedidos WHERE mesa = ? AND estado = 'entregado' AND cobrado = 0 ORDER BY creado_en ASC`
+);
+const marcarMesaCobrada = db.prepare(
+  `UPDATE pedidos SET cobrado = 1, cobrado_en = datetime('now') WHERE mesa = ? AND estado = 'entregado' AND cobrado = 0`
+);
+
 function obtenerPedidosPendientesConItems() {
   return pedidosPendientes.all().map(pedido => ({
     ...pedido,
@@ -55,7 +67,37 @@ app.get('/api/pedidos/historico', (req, res) => {
   res.json(historico);
 });
 
-// Origen único de verdad para el número de mesas — lo consumen tanto
+// Cuenta pendiente de una mesa: todo lo servido y no cobrado todavía,
+// agrupado por producto para poder imprimir un ticket único aunque hayan
+// sido varias rondas/comandas distintas. :mesa va tal cual se guarda en BD
+// (p.ej. "MESA 5"), así que hay que mandarlo con encodeURIComponent.
+app.get('/api/mesas/:mesa/cuenta', (req, res) => {
+  const mesa = req.params.mesa;
+  const pedidos = cuentaDeMesa.all(mesa).map(pedido => ({
+    ...pedido,
+    items: itemsDePedido.all(pedido.id)
+  }));
+
+  const agrupados = {};
+  pedidos.forEach(pedido => {
+    pedido.items.forEach(item => {
+      const clave = item.nombre + '|' + item.precio_unitario;
+      if (!agrupados[clave]) {
+        agrupados[clave] = { nombre: item.nombre, precio_unitario: item.precio_unitario, cantidad: 0 };
+      }
+      agrupados[clave].cantidad += item.cantidad;
+    });
+  });
+
+  const itemsAgrupados = Object.values(agrupados).map(i => ({
+    ...i,
+    subtotal: Math.round(i.precio_unitario * i.cantidad * 100) / 100
+  }));
+
+  const total = Math.round(pedidos.reduce((suma, p) => suma + p.total, 0) * 100) / 100;
+
+  res.json({ mesa, pedidos, itemsAgrupados, total });
+});
 // el generador de QR como la pantalla de camarero, para que nunca se
 // desincronicen entre sí.
 app.get('/api/mesas', (req, res) => {
@@ -282,6 +324,19 @@ io.on('connection', (socket) => {
     const { id } = datos;
     actualizarEstadoPedido.run('entregado', id);
     io.to('cocina').to('camarero').emit('pedido-actualizado', { id, estado: 'entregado' });
+  });
+
+  // Camarero cobra una mesa entera: cierra (marca cobrado=1) todos los
+  // pedidos servidos y pendientes de pago de esa mesa. No toca el estado
+  // ("entregado" se queda igual, solo cambia si está pagado o no), así que
+  // esto no afecta a las métricas de ventas del día ni a cocina.
+  socket.on('cobrar-mesa', (datos) => {
+    const { mesa } = datos;
+    if (!mesa) return;
+    const idsAntesDeMarcar = cuentaDeMesa.all(mesa).map(p => p.id);
+    if (idsAntesDeMarcar.length === 0) return;
+    marcarMesaCobrada.run(mesa);
+    io.to('camarero').emit('mesa-cobrada', { mesa, pedidoIds: idsAntesDeMarcar });
   });
 
   socket.on('disconnect', () => {

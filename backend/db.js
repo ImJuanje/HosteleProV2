@@ -34,7 +34,9 @@ db.exec(`
     creado_en TEXT NOT NULL,
     total REAL NOT NULL,
     tipo TEXT NOT NULL DEFAULT 'mesa', -- mesa | llevar
-    telefono TEXT DEFAULT '' -- solo relevante cuando tipo = 'llevar'
+    telefono TEXT DEFAULT '', -- solo relevante cuando tipo = 'llevar'
+    cobrado INTEGER NOT NULL DEFAULT 0, -- 0 = servido pero aún no pagado, 1 = ya cobrado
+    cobrado_en TEXT -- fecha/hora en que se pulsó "Cobrar" (NULL hasta entonces)
   );
 
   CREATE TABLE IF NOT EXISTS pedido_items (
@@ -68,6 +70,12 @@ if (!columnaExiste('pedidos', 'tipo')) {
 if (!columnaExiste('pedidos', 'telefono')) {
   db.exec(`ALTER TABLE pedidos ADD COLUMN telefono TEXT DEFAULT ''`);
 }
+if (!columnaExiste('pedidos', 'cobrado')) {
+  db.exec(`ALTER TABLE pedidos ADD COLUMN cobrado INTEGER NOT NULL DEFAULT 0`);
+}
+if (!columnaExiste('pedidos', 'cobrado_en')) {
+  db.exec(`ALTER TABLE pedidos ADD COLUMN cobrado_en TEXT`);
+}
 
 // Migración extra: si la tabla "pedidos" viene de antes de que existieran
 // los pedidos "para llevar", la columna "mesa" quedó como NOT NULL. SQLite
@@ -88,11 +96,13 @@ if (infoMesa && infoMesa.notnull === 1) {
       creado_en TEXT NOT NULL,
       total REAL NOT NULL,
       tipo TEXT NOT NULL DEFAULT 'mesa',
-      telefono TEXT DEFAULT ''
+      telefono TEXT DEFAULT '',
+      cobrado INTEGER NOT NULL DEFAULT 0,
+      cobrado_en TEXT
     );
 
-    INSERT INTO pedidos_nueva (id, mesa, estado, creado_en, total, tipo, telefono)
-    SELECT id, mesa, estado, creado_en, total, tipo, telefono FROM pedidos;
+    INSERT INTO pedidos_nueva (id, mesa, estado, creado_en, total, tipo, telefono, cobrado, cobrado_en)
+    SELECT id, mesa, estado, creado_en, total, tipo, telefono, cobrado, cobrado_en FROM pedidos;
 
     DROP TABLE pedidos;
     ALTER TABLE pedidos_nueva RENAME TO pedidos;
