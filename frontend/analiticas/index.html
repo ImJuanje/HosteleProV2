@@ -1,10 +1,11 @@
-<!DOCTYPE html>
+<!DOCTYPE HTML>
 
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HostelePro | Analíticas</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
   <style>
     *{
@@ -29,11 +30,63 @@
       display:flex;
       justify-content:space-between;
       align-items:center;
-      margin-bottom:24px;
+      margin-bottom:10px;
+      flex-wrap:wrap;
+      gap:12px;
     }
 
     .header h1{
       font-size:2rem;
+    }
+
+    .config-servidor{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .config-servidor input{
+      border:1px solid #ccc;
+      border-radius:6px;
+      padding:7px 10px;
+      font-size:12px;
+      width:260px;
+    }
+    .config-servidor button{
+      background:#222;
+      color:#fff;
+      border:none;
+      border-radius:6px;
+      padding:8px 14px;
+      font-weight:600;
+      cursor:pointer;
+    }
+    .estado-conexion{
+      padding:5px 12px;
+      border-radius:20px;
+      background:#c0392b;
+      color:#fff;
+      font-size:12px;
+    }
+    .estado-conexion.conectado{ background:#2e7d32; }
+
+    .franja-info{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      color:#777;
+      font-size:12px;
+      margin-bottom:20px;
+    }
+    .franja-info button{
+      background:none;
+      border:1px solid #ccc;
+      border-radius:6px;
+      padding:4px 10px;
+      font-size:11px;
+      cursor:pointer;
+      color:#555;
     }
 
     .stats-grid{
@@ -72,10 +125,14 @@
       border-radius:16px;
       padding:24px;
       box-shadow:0 2px 12px rgba(0,0,0,.08);
+      margin-bottom:20px;
     }
 
     .ranking-card h2{
       margin-bottom:15px;
+      display:flex;
+      align-items:center;
+      gap:8px;
     }
 
     .ranking-card ul{
@@ -85,6 +142,7 @@
     .ranking-card li{
       display:flex;
       justify-content:space-between;
+      align-items:center;
       padding:10px 0;
       border-bottom:1px solid #eee;
     }
@@ -92,6 +150,32 @@
     .ranking-card li:last-child{
       border-bottom:none;
     }
+
+    .ranking-card li .puesto{
+      color:#999;
+      font-size:12px;
+      width:22px;
+      flex:0 0 auto;
+    }
+    .ranking-card li .nombre-prod{
+      flex:1;
+    }
+    .ranking-card li strong{
+      color:#2e7d32;
+    }
+
+    .btn-mostrar-mas{
+      margin-top:12px;
+      width:100%;
+      background:#f4f6f8;
+      border:1px solid #ddd;
+      border-radius:8px;
+      padding:10px;
+      cursor:pointer;
+      font-size:13px;
+      color:#333;
+    }
+    .btn-mostrar-mas:hover{ background:#eaecee; }
 
     .loading{
       text-align:center;
@@ -107,60 +191,75 @@
 
   <div class="header">
     <h1>📊 Analíticas</h1>
+    <div class="config-servidor">
+      <input type="text" id="urlServidor" value="https://hosteleprov2-production.up.railway.app" placeholder="URL del backend">
+      <button id="btnConectar">Conectar</button>
+      <span class="estado-conexion" id="estadoConexion">desconectado</span>
+    </div>
+  </div>
+
+  <div class="franja-info">
+    <span>Datos de hoy · solo pedidos ya entregados/recogidos</span>
+    <span id="textoActualizado"></span>
+    <button id="btnRefrescar">↻ Actualizar</button>
   </div>
 
   <div class="stats-grid">
 
+    <div class="card">
+      <h3>💰 Ventas del día</h3>
+      <div class="value" id="caja">0 €</div>
+    </div>
 
-<div class="card">
-  <h3>💰 Caja Total</h3>
-  <div class="value" id="caja">0 €</div>
-</div>
+    <div class="card">
+      <h3>📊 Ticket Medio</h3>
+      <div class="value" id="ticket">0 €</div>
+    </div>
 
-<div class="card">
-  <h3>📊 Ticket Medio</h3>
-  <div class="value" id="ticket">0 €</div>
-</div>
+    <div class="card">
+      <h3>🍽️ Nº Comandas</h3>
+      <div class="value" id="comandas">0</div>
+    </div>
 
-<div class="card">
-  <h3>🍽️ Comandas Atendidas</h3>
-  <div class="value" id="comandas">0</div>
-</div>
+  </div>
 
-
+  <div class="ranking-card">
+    <h2>🏆 Más vendidos hoy</h2>
+    <ul id="ranking-general">
+      <li class="loading">Conéctate al backend para ver el ranking...</li>
+    </ul>
+    <button class="btn-mostrar-mas" id="btnMostrarMas">Mostrar más</button>
   </div>
 
   <div class="ranking-grid">
 
+    <div class="ranking-card">
+      <h2>🥔 Para Picar</h2>
+      <ul id="ranking-picar">
+        <li class="loading">Cargando...</li>
+      </ul>
+    </div>
 
-<div class="ranking-card">
-  <h2>🥔 Para Picar</h2>
-  <ul id="ranking-picar">
-    <li class="loading">Cargando...</li>
-  </ul>
-</div>
+    <div class="ranking-card">
+      <h2>🍖 Raciones</h2>
+      <ul id="ranking-raciones">
+        <li class="loading">Cargando...</li>
+      </ul>
+    </div>
 
-<div class="ranking-card">
-  <h2>🍖 Raciones</h2>
-  <ul id="ranking-raciones">
-    <li class="loading">Cargando...</li>
-  </ul>
-</div>
+    <div class="ranking-card">
+      <h2>🥤 Bebidas</h2>
+      <ul id="ranking-bebidas">
+        <li class="loading">Cargando...</li>
+      </ul>
+    </div>
 
-<div class="ranking-card">
-  <h2>🥤 Bebidas</h2>
-  <ul id="ranking-bebidas">
-    <li class="loading">Cargando...</li>
-  </ul>
-</div>
-
-<div class="ranking-card">
-  <h2>🍰 Postres</h2>
-  <ul id="ranking-postres">
-    <li class="loading">Cargando...</li>
-  </ul>
-</div>
-
+    <div class="ranking-card">
+      <h2>🍰 Postres</h2>
+      <ul id="ranking-postres">
+        <li class="loading">Cargando...</li>
+      </ul>
+    </div>
 
   </div>
 
@@ -168,34 +267,91 @@
 
 <script>
 
+let socket = null;
+let urlBackendActual = "";
+let temporizadorAutoRefresco = null;
+
+// Guardamos el último ranking general recibido para poder alternar entre
+// "top 5" y "lista completa" sin tener que volver a pedirlo al servidor.
+let ultimoTopGeneral = [];
+let mostrandoTodoElTop = false;
+
+const estadoConexion = document.getElementById("estadoConexion");
+const textoActualizado = document.getElementById("textoActualizado");
+const btnMostrarMas = document.getElementById("btnMostrarMas");
+
+function medalla(posicion) {
+  return ["🥇", "🥈", "🥉"][posicion] || (posicion + 1) + "º";
+}
+
 async function cargarAnaliticas() {
+
+  if (!urlBackendActual) return;
 
   try {
 
-    const res = await fetch('/api/analytics');
+    const res = await fetch(urlBackendActual + '/api/analytics');
     const data = await res.json();
 
     document.getElementById('caja').textContent =
-      Number(data.caja || 0).toFixed(2) + ' €';
+      Number(data.caja || 0).toFixed(2).replace(".", ",") + ' €';
 
     document.getElementById('ticket').textContent =
-      Number(data.ticket || 0).toFixed(2) + ' €';
+      Number(data.ticket || 0).toFixed(2).replace(".", ",") + ' €';
 
     document.getElementById('comandas').textContent =
       data.comandas || 0;
+
+    ultimoTopGeneral = data.topGeneral || [];
+    renderTopGeneral();
 
     renderRanking('ranking-picar', data.picar);
     renderRanking('ranking-raciones', data.raciones);
     renderRanking('ranking-bebidas', data.bebidas);
     renderRanking('ranking-postres', data.postres);
 
+    textoActualizado.textContent = "· actualizado a las " +
+      new Date().toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
   } catch(err) {
 
     console.error(err);
+    textoActualizado.textContent = "· no se pudieron cargar los datos";
 
   }
 
 }
+
+function renderTopGeneral(){
+  const ul = document.getElementById('ranking-general');
+
+  if (!ultimoTopGeneral.length) {
+    ul.innerHTML = '<li>No hay ventas todavía hoy</li>';
+    btnMostrarMas.style.display = "none";
+    return;
+  }
+
+  const cuantosMostrar = mostrandoTodoElTop ? ultimoTopGeneral.length : Math.min(5, ultimoTopGeneral.length);
+  const visibles = ultimoTopGeneral.slice(0, cuantosMostrar);
+
+  ul.innerHTML = visibles.map((item, i) => `
+    <li>
+      <span class="puesto">${medalla(i)}</span>
+      <span class="nombre-prod">${item.nombre}</span>
+      <strong>${item.ventas} uds</strong>
+    </li>
+  `).join('');
+
+  btnMostrarMas.style.display = ultimoTopGeneral.length > 5 ? "block" : "none";
+  btnMostrarMas.textContent = mostrandoTodoElTop
+    ? "Mostrar menos"
+    : `Mostrar más (${ultimoTopGeneral.length - 5} más)`;
+}
+
+btnMostrarMas.addEventListener("click", () => {
+  mostrandoTodoElTop = !mostrandoTodoElTop;
+  renderTopGeneral();
+});
 
 function renderRanking(id, items){
 
@@ -209,16 +365,53 @@ function renderRanking(id, items){
     return;
   }
 
-  ul.innerHTML = items.map(item => 
+  ul.innerHTML = items.map((item, i) => `
     <li>
-      <span>${item.nombre}</span>
-      <strong>${item.ventas}</strong>
+      <span class="puesto">${medalla(i)}</span>
+      <span class="nombre-prod">${item.nombre}</span>
+      <strong>${item.ventas} uds</strong>
     </li>
-  ).join('');
+  `).join('');
 
 }
 
-cargarAnaliticas();
+function conectar() {
+  const urlBase = document.getElementById("urlServidor").value.trim();
+  if (!urlBase) return;
+  urlBackendActual = urlBase;
+
+  if (socket) socket.disconnect();
+  if (temporizadorAutoRefresco) clearInterval(temporizadorAutoRefresco);
+
+  socket = io(urlBase);
+
+  socket.on("connect", () => {
+    estadoConexion.textContent = "conectado";
+    estadoConexion.classList.add("conectado");
+    // Esta sala es donde ya se avisa de cambios de estado de pedidos,
+    // incluido el paso a "entregado" — que es justo lo que mueve las
+    // métricas (solo cuenta lo ya entregado/recogido).
+    socket.emit("unirse-camarero");
+    cargarAnaliticas();
+  });
+
+  socket.on("disconnect", () => {
+    estadoConexion.textContent = "desconectado";
+    estadoConexion.classList.remove("conectado");
+  });
+
+  socket.on("pedido-actualizado", (datos) => {
+    if (datos.estado === "entregado") cargarAnaliticas();
+  });
+
+  // Refresco de seguridad cada 30s, por si se pierde algún evento del socket.
+  temporizadorAutoRefresco = setInterval(cargarAnaliticas, 30000);
+}
+
+document.getElementById("btnConectar").addEventListener("click", conectar);
+document.getElementById("btnRefrescar").addEventListener("click", cargarAnaliticas);
+
+conectar();
 
 </script>
 

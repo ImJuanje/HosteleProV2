@@ -72,27 +72,64 @@ app.get('/api/carta', (req, res) => {
   res.json({ categorias, productos });
 });
 
+// ---------- Analíticas ----------
+// Calcula la medianoche de "hoy" y la de mañana, en la zona horaria del
+// restaurante, expresadas como texto UTC ('YYYY-MM-DD HH:MM:SS') para poder
+// comparar directamente con creado_en (que se guarda con datetime('now'),
+// en UTC). Así "hoy" se corta a medianoche real del restaurante y no a la
+// medianoche UTC del servidor (que en España cae a las 1-2 de la madrugada).
+const ZONA_HORARIA_RESTAURANTE = 'Europe/Madrid';
+
+function desplazamientoMinutos(zonaHoraria, fecha) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: zonaHoraria, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(fecha).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+
+  const comoUTC = Date.UTC(
+    Number(partes.year), Number(partes.month) - 1, Number(partes.day),
+    Number(partes.hour) % 24, Number(partes.minute), Number(partes.second)
+  );
+  return (comoUTC - fecha.getTime()) / 60000;
+}
+
+function limitesDeHoyUTC(zonaHoraria = ZONA_HORARIA_RESTAURANTE) {
+  const ahora = new Date();
+  const offsetMin = desplazamientoMinutos(zonaHoraria, ahora);
+  const localAhora = new Date(ahora.getTime() + offsetMin * 60000);
+  const y = localAhora.getUTCFullYear(), m = localAhora.getUTCMonth(), d = localAhora.getUTCDate();
+
+  const inicioLocalComoUTC = Date.UTC(y, m, d, 0, 0, 0);
+  const finLocalComoUTC = Date.UTC(y, m, d + 1, 0, 0, 0);
+
+  const aFormatoSQLite = (ms) => new Date(ms - offsetMin * 60000).toISOString().slice(0, 19).replace('T', ' ');
+  return { inicio: aFormatoSQLite(inicioLocalComoUTC), fin: aFormatoSQLite(finLocalComoUTC) };
+}
+
 app.get('/api/analytics', (req, res) => {
 
   try {
 
+    const { inicio, fin } = limitesDeHoyUTC();
+
     const caja = db.prepare(`
       SELECT COALESCE(SUM(total), 0) as total
       FROM pedidos
-      WHERE estado = 'entregado'
-    `).get();
+      WHERE estado = 'entregado' AND creado_en >= ? AND creado_en < ?
+    `).get(inicio, fin);
 
     const ticket = db.prepare(`
       SELECT ROUND(AVG(total), 2) as media
       FROM pedidos
-      WHERE estado = 'entregado'
-    `).get();
+      WHERE estado = 'entregado' AND creado_en >= ? AND creado_en < ?
+    `).get(inicio, fin);
 
     const comandas = db.prepare(`
       SELECT COUNT(*) as total
       FROM pedidos
-      WHERE estado = 'entregado'
-    `).get();
+      WHERE estado = 'entregado' AND creado_en >= ? AND creado_en < ?
+    `).get(inicio, fin);
 
     const getTop = (categoria) => {
 
@@ -101,24 +138,40 @@ app.get('/api/analytics', (req, res) => {
           pi.nombre,
           SUM(pi.cantidad) as ventas
         FROM pedido_items pi
-        JOIN productos p
-          ON p.nombre = pi.nombre
+        JOIN pedidos ped ON ped.id = pi.pedido_id
+        JOIN productos p ON p.nombre = pi.nombre
         WHERE p.categoria_id = ?
+          AND ped.estado = 'entregado' AND ped.creado_en >= ? AND ped.creado_en < ?
         GROUP BY pi.nombre
         ORDER BY ventas DESC
         LIMIT 5
-      `).all(categoria);
+      `).all(categoria, inicio, fin);
 
     };
+
+    // Ranking general (todas las categorías juntas), sin límite — el
+    // frontend decide cuántos enseña de entrada y cuántos con "mostrar más".
+    const topGeneral = db.prepare(`
+      SELECT
+        pi.nombre,
+        SUM(pi.cantidad) as ventas
+      FROM pedido_items pi
+      JOIN pedidos ped ON ped.id = pi.pedido_id
+      WHERE ped.estado = 'entregado' AND ped.creado_en >= ? AND ped.creado_en < ?
+      GROUP BY pi.nombre
+      ORDER BY ventas DESC
+    `).all(inicio, fin);
 
     res.json({
       caja: caja.total || 0,
       ticket: ticket.media || 0,
       comandas: comandas.total || 0,
+      topGeneral,
       picar: getTop('picar'),
       raciones: getTop('raciones'),
       bebidas: getTop('bebidas'),
-      postres: getTop('postres')
+      postres: getTop('postres'),
+      rango: { inicio, fin, zonaHoraria: ZONA_HORARIA_RESTAURANTE }
     });
 
   } catch (error) {
