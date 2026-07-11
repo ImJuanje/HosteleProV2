@@ -230,7 +230,7 @@ app.get('/api/analytics', (req, res) => {
 
 
 app.get('/', (req, res) => {
-  res.send('HosteléPro backend funcionando');
+  res.send('HostelePro backend funcionando');
 });
 
 // ---------- Tiempo real ----------
