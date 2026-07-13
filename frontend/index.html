@@ -367,6 +367,102 @@
   .cta-block .btn-ghost:hover{border-color:var(--cta-fg);}
   .cta-block .btn-primary{background:var(--cta-fg);color:var(--cta-bg);}
 
+  /* ---- newsletter / suscripción ---- */
+  .newsletter-section {
+    background: var(--paper-2);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .newsletter-card {
+    max-width: 620px;
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 40px 32px;
+    box-shadow: var(--shadow-1);
+    text-align: center;
+    transition: background-color .5s var(--ease), border-color .5s var(--ease);
+  }
+  .newsletter-card h3 {
+    font-size: 1.4rem;
+    margin-bottom: 8px;
+  }
+  .newsletter-card p {
+    color: var(--ink-soft);
+    margin-bottom: 24px;
+    font-size: 0.95rem;
+  }
+  .newsletter-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  .newsletter-form .input-group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .newsletter-form input[type="email"] {
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 40px;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.95rem;
+    font-family: 'Inter', sans-serif;
+    transition: border-color .3s var(--ease), box-shadow .3s var(--ease), background-color .5s var(--ease);
+  }
+  .newsletter-form input[type="email"]:focus {
+    outline: none;
+    border-color: var(--pass);
+    box-shadow: 0 0 0 3px var(--pass-dim);
+  }
+  .newsletter-form input[type="email"]::placeholder {
+    color: var(--ink-faint);
+  }
+  .newsletter-form .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .newsletter-footnote {
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    margin-top: 12px;
+    letter-spacing: 0.02em;
+  }
+  .newsletter-footnote a {
+    color: var(--pass-ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  /* mensaje de éxito (estilo inline simple) */
+  .newsletter-success {
+    display: none;
+    color: var(--pass-ink);
+    font-weight: 500;
+    padding: 12px 0 4px;
+  }
+  .newsletter-success.show {
+    display: block;
+  }
+
+  @media (min-width: 520px) {
+    .newsletter-form .input-group {
+      flex-direction: row;
+    }
+    .newsletter-form input[type="email"] {
+      flex: 1;
+    }
+    .newsletter-form .btn {
+      width: auto;
+      flex-shrink: 0;
+    }
+  }
+
   /* ---- footer ---- */
   footer{padding:40px 0 32px;border-top:1px solid var(--line);}
   .foot-row{display:flex;flex-direction:column;gap:18px;align-items:center;text-align:center;}
@@ -554,7 +650,7 @@
       <p class="section-sub reveal r2" data-i18n="gallery.sub">Un vistazo a las pantallas que usa tu equipo cada día.</p>
     </div>
 
-    <div class="gallery-scroll reveal r2">
+    <div class="gallery-scroll reveal r2">  
       <div class="mock-card">
         <div class="mock-bar"><i></i><i></i><i></i></div>
         <div class="mock-body"><div class="mm-kitchen">
@@ -693,6 +789,26 @@
   </div>
 </section>
 
+<!-- NEWSLETTER / SUSCRIPCIÓN -->
+<section class="newsletter-section" id="newsletter">
+  <div class="container">
+    <div class="newsletter-card reveal">
+      <h3 class="serif" data-i18n="news.title">📬 Novedades y ofertas exclusivas</h3>
+      <p data-i18n="news.desc">Suscríbete para recibir actualizaciones, información de producto, descuentos y promociones especiales. Sin spam, solo contenido útil.</p>
+      <form class="newsletter-form" id="newsletterForm" data-netlify="true" method="POST">
+        <input type="hidden" name="form-name" value="newsletter" >
+        <div class="input-group">
+          <input type="email" id="emailInput" placeholder="tu@email.com" required aria-label="Correo electrónico" data-i18n-placeholder="news.placeholder">
+          <button type="submit" class="btn btn-primary" data-i18n="news.btn">Apuntarme</button>
+        </div>
+        <div class="newsletter-success" id="newsletterSuccess" data-i18n="news.success">✓ ¡Gracias! Te mantendremos al día.</div>
+        <div class="newsletter-footnote" data-i18n="news.footnote">Puedes darte de baja en cualquier momento · <a href="#" data-i18n="news.privacy">Política de privacidad</a></div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
 <footer>
   <div class="container foot-row">
     <span class="foot-note" data-i18n="footer.note">© 2026 HostelePro · Soluciones digitales para hostelería</span>
@@ -706,6 +822,7 @@
 </footer>
 
 <script>
+  // i18n diccionario (se mantiene igual, añadimos las claves para newsletter)
   const i18n = {
     es: {
       "nav.producto":"Producto","nav.como":"Cómo funciona","nav.precios":"Precios","nav.opiniones":"Opiniones","nav.cta":"Solicitar demo",
@@ -748,7 +865,14 @@
       "btn.comenzar":"Comenzar","btn.reservar":"Reservar acceso",
       "cta.title":"¿Vemos HostelePro en tu restaurante?","cta.text":"Te enseñamos el flujo completo, de la mesa a la cocina, en una demo de 20 minutos.",
       "cta.btn1":"Solicitar demo","cta.btn2":"Ver funciones",
-      "footer.note":"© 2026 HostelePro · Soluciones digitales para hostelería","footer.contact":"Contacto"
+      "footer.note":"© 2026 HostelePro · Soluciones digitales para hostelería","footer.contact":"Contacto",
+      "news.title":"📬 Novedades y ofertas exclusivas",
+      "news.desc":"Suscríbete para recibir actualizaciones, información de producto, descuentos y promociones especiales. Sin spam, solo contenido útil.",
+      "news.placeholder":"tu@email.com",
+      "news.btn":"Apuntarme",
+      "news.success":"✓ ¡Gracias! Te mantendremos al día.",
+      "news.footnote":"Puedes darte de baja en cualquier momento · ",
+      "news.privacy":"Política de privacidad"
     },
     en: {
       "nav.producto":"Product","nav.como":"How it works","nav.precios":"Pricing","nav.opiniones":"Reviews","nav.cta":"Request a demo",
@@ -791,7 +915,14 @@
       "btn.comenzar":"Get started","btn.reservar":"Reserve access",
       "cta.title":"Want to see HostelePro at your restaurant?","cta.text":"We'll walk you through the full flow, from table to kitchen, in a 20-minute demo.",
       "cta.btn1":"Request a demo","cta.btn2":"See features",
-      "footer.note":"© 2026 HostelePro · Digital tools for hospitality","footer.contact":"Contact"
+      "footer.note":"© 2026 HostelePro · Digital tools for hospitality","footer.contact":"Contact",
+      "news.title":"📬 News & exclusive offers",
+      "news.desc":"Subscribe to receive updates, product info, discounts and special promotions. No spam, just useful content.",
+      "news.placeholder":"your@email.com",
+      "news.btn":"Sign up",
+      "news.success":"✓ Thanks! We'll keep you posted.",
+      "news.footnote":"You can unsubscribe anytime · ",
+      "news.privacy":"Privacy policy"
     }
   };
 
@@ -801,7 +932,11 @@
       const key = el.getAttribute('data-i18n');
       const dict = i18n[lang];
       if (!dict || !dict[key]) return;
-      // preserve nested elements (e.g. mock-title > span) by only touching direct text nodes when children exist
+      // si tiene placeholder, lo tratamos aparte
+      if (el.hasAttribute('data-i18n-placeholder')) {
+        el.placeholder = dict[key];
+        return;
+      }
       if (el.children.length > 0) {
         for (const node of el.childNodes) {
           if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) {
@@ -850,6 +985,21 @@
     langBtn.addEventListener('click', () => {
       const current = langBtn.getAttribute('data-lang');
       applyLang(current === 'es' ? 'en' : 'es');
+    });
+
+    // Newsletter form handler (simulación de envío)
+    const form = document.getElementById('newsletterForm');
+    const successMsg = document.getElementById('newsletterSuccess');
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const email = document.getElementById('emailInput').value.trim();
+      if (!email) return;
+      // Aquí podrías hacer un fetch a tu backend o usar Formspree, etc.
+      // Por ahora mostramos mensaje de éxito.
+      successMsg.classList.add('show');
+      form.reset();
+      // Ocultar mensaje después de 5 segundos
+      setTimeout(() => successMsg.classList.remove('show'), 5000);
     });
   });
 </script>
